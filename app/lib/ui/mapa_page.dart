@@ -11,11 +11,14 @@ import 'package:latlong2/latlong.dart';
 
 import '../core/ruteo.dart';
 import '../core/ubicacion.dart';
+import '../state/providers.dart';
 import '../state/sesion.dart';
 import '../state/zona_guaicaramo.dart';
 import 'capa_parcelas.dart';
+import 'capa_pdf.dart';
 import 'capa_ruta.dart';
 import 'capa_vias.dart';
+import 'importar_mapa_page.dart';
 
 /// La pantalla principal: el mapa.
 ///
@@ -63,6 +66,11 @@ class _MapaPageState extends ConsumerState<MapaPage> {
   /// Los linderos de los lotes, igual: se apagan para mirar el cultivo limpio.
   bool _verParcelas = true;
 
+  /// Los planos importados se apagan todos juntos desde el mapa. Encender cada
+  /// uno por separado es cosa de la pantalla de capas; aca lo que se necesita
+  /// es poder ver el terreno limpio de un manotazo.
+  bool _verPlanos = true;
+
   /// El punto que se marco en el mapa, y la ruta por via hasta el.
   ///
   /// Viven en la pantalla y no en un provider porque no sobreviven a salir del
@@ -81,11 +89,14 @@ class _MapaPageState extends ConsumerState<MapaPage> {
   /// La pista de "manten pulsado" se muestra hasta que se usa una vez.
   bool _pistaVista = false;
 
-  /// El zoom y el area visible mandan sobre que rotulos se dibujan. Se guardan
-  /// aca porque el mapa los reporta por callback, no se pueden leer en el build
-  /// antes del primer cuadro.
+  /// El zoom manda sobre que rotulos se dibujan. Se guarda aca porque el mapa
+  /// lo reporta por callback, no se puede leer en el build antes del primer
+  /// cuadro.
+  ///
+  /// El area visible **no** se guarda: las capas no la necesitan -flutter_map
+  /// ya descarta solo lo que queda fuera de pantalla- y guardarla obligaba a
+  /// reconstruir la pantalla en cada cuadro del arrastre.
   double _zoom = 15;
-  LatLngBounds? _visible;
 
   @override
   void initState() {
@@ -260,6 +271,10 @@ class _MapaPageState extends ConsumerState<MapaPage> {
         ? null
         : ref.watch(viasPredioProvider(widget.archivoVias!)).valueOrNull;
 
+    // Los planos que el usuario importo y dejo encendidos. Vienen de la base,
+    // asi que siguen ahi despues de cerrar la app.
+    final planos = ref.watch(capasVisiblesProvider).valueOrNull ?? const [];
+
     final parcelas = widget.archivoParcelas == null
         ? null
         : ref
@@ -287,10 +302,18 @@ class _MapaPageState extends ConsumerState<MapaPage> {
                   ? null
                   : (_, punto) => _fijarDestino(punto),
               onPositionChanged: (camara, porGesto) {
+                // Esto llega en cada cuadro mientras alguien mueve el mapa.
+                // Arrastrar no cambia nada de lo que se dibuja -el zoom es lo
+                // que decide los rotulos-, asi que reconstruir la pantalla por
+                // cada cuadro de arrastre era trabajo puro sin resultado.
+                final soltoElSeguimiento = porGesto && _siguiendo;
+                if (!soltoElSeguimiento &&
+                    (camara.zoom - _zoom).abs() < 0.01) {
+                  return;
+                }
                 setState(() {
                   _zoom = camara.zoom;
-                  _visible = camara.visibleBounds;
-                  if (porGesto && _siguiendo) _siguiendo = false;
+                  if (soltoElSeguimiento) _siguiendo = false;
                 });
               },
             ),
@@ -304,12 +327,13 @@ class _MapaPageState extends ConsumerState<MapaPage> {
               // Orden de abajo hacia arriba: imagen, lotes, vias, posicion.
               // Los linderos van primero porque son areas; una via encima de
               // un lindero se ve, un lindero encima de una via lo borra.
+              // Los planos importados van sobre el satelital y **debajo** de
+              // los lotes y las vias: el plano es contexto, y los linderos
+              // que la app conoce de verdad no los puede tapar una hoja.
+              if (_verPlanos && planos.isNotEmpty) CapaPdf(planos: planos),
+
               if (parcelas != null && _verParcelas)
-                CapaParcelas(
-                  parcelas: parcelas,
-                  zoom: _zoom,
-                  visible: _visible,
-                ),
+                CapaParcelas(parcelas: parcelas, zoom: _zoom),
 
               // Las vias van sobre la imagen y debajo del punto propio: saber
               // donde estoy no lo puede tapar una linea.
@@ -376,6 +400,30 @@ class _MapaPageState extends ConsumerState<MapaPage> {
                   tooltip: 'Mi cuenta',
                   child: const Icon(Icons.account_circle_outlined),
                 ),
+                const SizedBox(height: 12),
+                FloatingActionButton.small(
+                  heroTag: 'capas',
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ImportarMapaPage(),
+                    ),
+                  ),
+                  tooltip: 'Capas y planos',
+                  child: const Icon(Icons.layers_outlined),
+                ),
+                if (planos.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  FloatingActionButton.small(
+                    heroTag: 'planos',
+                    onPressed: () => setState(() => _verPlanos = !_verPlanos),
+                    tooltip: _verPlanos
+                        ? 'Ocultar los planos'
+                        : 'Ver los planos (${planos.length})',
+                    child: Icon(
+                      _verPlanos ? Icons.map : Icons.map_outlined,
+                    ),
+                  ),
+                ],
                 if (parcelas != null) ...[
                   const SizedBox(height: 12),
                   FloatingActionButton.small(

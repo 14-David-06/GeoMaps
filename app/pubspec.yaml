@@ -2,7 +2,7 @@ name: geomaps
 description: "Mapas georreferenciados offline: carga el plano del predio, ubicate en el sin senal, marca y mide"
 publish_to: 'none'
 
-version: 0.2.0+2
+version: 0.2.1+3
 
 environment:
   sdk: ^3.13.2
@@ -71,11 +71,12 @@ dependencies:
   # --- Camara y archivos -------------------------------------------------
   camera: ^0.11.0
   image_picker: ^1.2.3
-  # TODO(importar-mapas): reactivar al construir la pantalla de importar un
-  # MBTiles del telefono. Se saco porque 8.x se compila contra android-34 (muy
-  # viejo para esta cadena) y 11.x no publica la clase Java que el registrant de
-  # plugins espera. Cuando haga falta, revisar cual version arregla las dos.
-  # file_picker:
+  # Elegir un archivo del telefono (el PDF de topografia que se importa como
+  # capa). Es `file_selector` y no `file_picker`: el segundo sigue sin compilar
+  # -8.x contra android-34, muy viejo para esta cadena; 11.x no publica la clase
+  # Java que el registrant de plugins espera, comprobado de nuevo al construir
+  # la importacion-. Este es del equipo de Flutter y compila limpio.
+  file_selector: ^1.1.0
   # 12.x y no 13.x: share_plus 13 pide win32 ^6 y flutter_secure_storage pide
   # win32 ^5. El conflicto es de los plugins de Windows, no de Android, pero pub
   # resuelve para todas las plataformas a la vez.
@@ -92,7 +93,7 @@ dependencies:
   package_info_plus: ^9.0.1
   ota_update: ^7.1.0
   crypto: ^3.0.7
-
+  image: ^4.10.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

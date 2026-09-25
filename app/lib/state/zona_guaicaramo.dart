@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/parcelas.dart';
@@ -149,5 +150,9 @@ final redVialProvider = FutureProvider.family<RedVial, String>((
   archivo,
 ) async {
   final vias = await ref.watch(viasPredioProvider(archivo).future);
-  return RedVial.construir(vias);
+  // Fuera del hilo de la interfaz: son unas decimas de segundo de calculo, y
+  // ocurren mientras la pantalla dice "calculando". Si se hicieran donde corre
+  // la pantalla, ese cartel se quedaria congelado sin siquiera animarse, que
+  // es la forma exacta de que parezca que la app se colgo.
+  return compute(RedVial.construir, vias);
 });

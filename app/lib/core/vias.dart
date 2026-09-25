@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:latlong2/latlong.dart';
 
@@ -12,8 +13,21 @@ import 'package:latlong2/latlong.dart';
 class ViasPredio {
   const ViasPredio(this.vias);
 
+  /// Lee el asset y lo parsea **fuera del hilo de la interfaz**.
+  ///
+  /// Son 353 KB y 1.664 vias: parsearlos donde corre la pantalla congela la
+  /// app justo al abrir el mapa, que es el peor momento posible. `compute` lo
+  /// manda a otro hilo; lo que se pierde son unos milisegundos en arrancarlo y
+  /// en copiar el resultado de vuelta, contra una pantalla que no se traba.
   static Future<ViasPredio> cargar(String archivo) async {
     final crudo = await rootBundle.loadString('assets/zonas/$archivo');
+    return compute(deJson, crudo);
+  }
+
+  /// El parseo puro. Es estatico y recibe el texto -no el mapa ya decodificado-
+  /// porque asi es lo unico que `compute` necesita mandar al otro hilo, y
+  /// porque deja la prueba corriendo sin levantar el binding de Flutter.
+  static ViasPredio deJson(String crudo) {
     final j = jsonDecode(crudo) as Map<String, dynamic>;
     final tipos = (j['tipos'] as List).cast<String>();
 

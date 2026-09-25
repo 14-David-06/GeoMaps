@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:latlong2/latlong.dart';
 
@@ -12,8 +13,18 @@ import 'package:latlong2/latlong.dart';
 class ParcelasPredio {
   const ParcelasPredio({required this.parcelas, required this.bloques});
 
+  /// Lee el asset y lo parsea **fuera del hilo de la interfaz**.
+  ///
+  /// Son 254 KB, 581 lotes y sus contornos. Ver `ViasPredio.cargar`: el motivo
+  /// es el mismo, y los dos se cargan en el mismo momento -al abrir el mapa-,
+  /// asi que sumaban su congelada.
   static Future<ParcelasPredio> cargar(String archivo) async {
     final crudo = await rootBundle.loadString('assets/zonas/$archivo');
+    return compute(deJson, crudo);
+  }
+
+  /// El parseo puro, para que `compute` solo tenga que mandar el texto.
+  static ParcelasPredio deJson(String crudo) {
     final j = jsonDecode(crudo) as Map<String, dynamic>;
 
     final parcelas = (j['parcelas'] as List)

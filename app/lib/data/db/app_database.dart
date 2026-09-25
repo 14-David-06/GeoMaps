@@ -29,7 +29,7 @@ class AppDatabase extends _$AppDatabase {
   /// Subirlo es obligatorio en cuanto cambie cualquier tabla, junto con su
   /// paso en `onUpgrade`. Ver "Cambiar el esquema" abajo.
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   /// Como pasa la base de una version del APK a la siguiente.
   ///
@@ -57,17 +57,23 @@ class AppDatabase extends _$AppDatabase {
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
     onUpgrade: (m, desde, hasta) async {
-      // Todavia no hay pasos: la v1 es la primera. Cuando exista la v2,
-      // esto pasa a ser `stepByStep(from1To2: ...)` con el archivo que
-      // genera make-migrations.
-      //
+      // v1 -> v2: la columna de esquinas, para los planos importados que no
+      // caen derechos sobre el mapa. Es `addColumn` de una columna nullable:
+      // las filas que ya existan quedan como estaban, que es lo correcto -un
+      // MBTiles ya reproyectado no tiene esquinas giradas-.
+      if (desde < 2) {
+        await m.addColumn(mapas, mapas.esquinas);
+      }
+
       // Si se llega aca sin paso para `desde`, se corta con error en vez
       // de seguir: una base a medio migrar es peor que una app que no
       // abre, porque la segunda se arregla con otro APK y la primera no.
-      throw StateError(
-        'No hay migracion de la base v$desde a la v$hasta. Falta el paso '
-        'en AppDatabase.migration.',
-      );
+      if (desde > hasta || desde < 1) {
+        throw StateError(
+          'No hay migracion de la base v$desde a la v$hasta. Falta el paso '
+          'en AppDatabase.migration.',
+        );
+      }
     },
   );
 }

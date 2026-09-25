@@ -11,13 +11,41 @@ import '../core/vias.dart';
 ///
 /// Van **debajo** del punto propio y del circulo de precision, que se agregan
 /// despues en `MapaPage`: saber donde estoy no lo puede tapar una linea.
-class CapaVias extends StatelessWidget {
+///
+/// ## Por que tiene estado si no cambia nada
+///
+/// Son 1.664 vias, y arrastrar el mapa reconstruye la pantalla en cada cuadro.
+/// Armar 1.664 `Polyline` sesenta veces por segundo es el trabajo que hacia que
+/// el mapa se sintiera pesado al moverlo, y era trabajo tirado: el resultado es
+/// identico mientras el predio sea el mismo.
+///
+/// Por eso la lista se arma una vez y se guarda. No hace falta filtrar por lo
+/// que se ve: `PolylineLayer` ya descarta solo lo que queda fuera de pantalla.
+/// Lo que se ahorra aca es **construirlas**, que es lo que pasaba antes de que
+/// el mapa tuviera oportunidad de descartar nada.
+class CapaVias extends StatefulWidget {
   const CapaVias({required this.vias, super.key});
 
   final ViasPredio vias;
 
   @override
-  Widget build(BuildContext context) {
+  State<CapaVias> createState() => _CapaViasState();
+}
+
+class _CapaViasState extends State<CapaVias> {
+  late List<Polyline> _lineas = _armar(widget.vias);
+
+  @override
+  void didUpdateWidget(CapaVias anterior) {
+    super.didUpdateWidget(anterior);
+    // Solo si de verdad cambio el predio. Es el unico caso en que la lista
+    // guardada dejaria de servir.
+    if (!identical(anterior.vias, widget.vias)) {
+      _lineas = _armar(widget.vias);
+    }
+  }
+
+  static List<Polyline> _armar(ViasPredio vias) {
     // Dos pasadas: primero las proyectadas, para que las vias que existen de
     // verdad queden dibujadas encima en los cruces.
     final proyectadas = <Polyline>[];
@@ -39,8 +67,11 @@ class CapaVias extends StatelessWidget {
       (via.tipo.construida ? construidas : proyectadas).add(linea);
     }
 
-    return PolylineLayer(polylines: [...proyectadas, ...construidas]);
+    return [...proyectadas, ...construidas];
   }
+
+  @override
+  Widget build(BuildContext context) => PolylineLayer(polylines: _lineas);
 }
 
 /// Como se ve cada tipo de via.

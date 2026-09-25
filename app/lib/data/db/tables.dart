@@ -94,6 +94,16 @@ class Mapas extends Table with Sincronizable {
   /// avisar cuando el usuario esta parado fuera del mapa que abrio.
   TextColumn get bbox => text().nullable()();
 
+  /// Las cuatro esquinas reales, `lat,lon` cada una, en orden noroeste,
+  /// noreste, sureste, suroeste.
+  ///
+  /// Existe aparte del bbox porque un plano de topografia **no cae derecho**:
+  /// viene en el sistema del pais y sobre el mapa queda girado unos grados.
+  /// Dibujarlo dentro de su bbox lo estira hasta el rectangulo, y un lindero
+  /// estirado manda a caminar al lugar equivocado. Nulo en los mapas que si
+  /// son rectangulos, como los MBTiles ya reproyectados.
+  TextColumn get esquinas => text().nullable()();
+
   TextColumn get estado => text()();
 
   /// Orden de dibujo, opacidad y visibilidad de la capa. Viven aca y no en el
