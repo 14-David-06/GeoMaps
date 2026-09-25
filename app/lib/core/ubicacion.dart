@@ -55,13 +55,65 @@ class Ubicacion {
   /// `distanceFilter` en metros es lo que evita el ruido de estar parado. Va
   /// bajo (3 m) porque esta pantalla solo muestra la posicion; para grabar un
   /// trazado el filtro sube.
-  static Stream<Position> flujo({int distanciaMinimaM = 3}) {
-    return Geolocator.getPositionStream(
-      locationSettings: LocationSettings(
+  ///
+  /// Arranca con la ultima posicion que el telefono tenga guardada, si es de
+  /// las ultimas [antiguedadMaximaCache]. Sin internet no hay GPS asistido y
+  /// el primer fix puede tardar minutos; mientras tanto es mejor ver el mapa
+  /// donde uno estaba -marcado con [esDeCache]- que una pantalla
+  /// "buscando" sin fin.
+  ///
+  /// `forceLocationManager` saca el pedido del proveedor de Google Play
+  /// Services y lo manda al LocationManager del sistema, que habla con el chip
+  /// GPS sin depender de la red.
+  static Stream<Position> flujo({int distanciaMinimaM = 3}) async* {
+    final cache = await ultimaConocida();
+    if (cache != null) {
+      _deCache[cache] = true;
+      yield cache;
+    }
+
+    yield* Geolocator.getPositionStream(
+      locationSettings: AndroidSettings(
         accuracy: LocationAccuracy.best,
         distanceFilter: distanciaMinimaM,
+        forceLocationManager: true,
       ),
     );
+  }
+
+  /// Hasta que edad sirve la posicion guardada para arrancar. Mas vieja que
+  /// esto puede ser de otra finca y confunde mas de lo que ayuda.
+  static const antiguedadMaximaCache = Duration(hours: 2);
+
+  static Future<Position?> ultimaConocida() async {
+    try {
+      final p = await Geolocator.getLastKnownPosition();
+      if (p == null) return null;
+      if (DateTime.now().difference(p.timestamp) > antiguedadMaximaCache) {
+        return null;
+      }
+      return p;
+    } catch (_) {
+      // La cache es un extra: si falla, se espera el GPS como antes.
+      return null;
+    }
+  }
+
+  /// Marca las posiciones que salieron de la cache y no del GPS en vivo.
+  ///
+  /// Va marcada y no deducida de la hora del fix: parado, el filtro de
+  /// distancia no entrega puntos nuevos, y un fix real de hace un minuto no es
+  /// una posicion vieja.
+  static final _deCache = Expando<bool>();
+
+  static bool esDeCache(Position p) => _deCache[p] ?? false;
+
+  /// "hace 3 min", "hace 1 h". Para decir de cuando es una posicion vieja.
+  static String hace(Position p) {
+    final d = DateTime.now().difference(p.timestamp);
+    if (d.inMinutes < 1) return 'hace ${d.inSeconds} s';
+    if (d.inHours < 1) return 'hace ${d.inMinutes} min';
+    return 'hace ${d.inHours} h';
   }
 
   // TODO: flujoParaTrazado(...) con los contadores de descartados por cercania

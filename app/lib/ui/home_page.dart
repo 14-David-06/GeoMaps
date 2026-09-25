@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/ubicacion.dart';
 import '../state/providers.dart';
 import '../state/red.dart';
 import '../state/sesion.dart';
@@ -164,15 +165,21 @@ class _Estado extends ConsumerWidget {
     final sesion = ref.watch(sesionProvider).sesion;
 
     final gps = posicion.when(
-      data: (p) => _Chip(
-        icono: Icons.gps_fixed,
-        texto: '+/- ${p.accuracy.toStringAsFixed(0)} m',
-        // El umbral no es cosmetico: por encima de 10 m el punto no sirve para
-        // marcar un vertice de lindero.
-        color: p.accuracy <= 10
-            ? Colors.green.shade700
-            : Colors.orange.shade800,
-      ),
+      data: (p) => Ubicacion.esDeCache(p)
+          ? _Chip(
+              icono: Icons.gps_not_fixed,
+              texto: 'GPS: ${Ubicacion.hace(p)}',
+              color: Colors.orange.shade800,
+            )
+          : _Chip(
+              icono: Icons.gps_fixed,
+              texto: '+/- ${p.accuracy.toStringAsFixed(0)} m',
+              // El umbral no es cosmetico: por encima de 10 m el punto no sirve para
+              // marcar un vertice de lindero.
+              color: p.accuracy <= 10
+                  ? Colors.green.shade700
+                  : Colors.orange.shade800,
+            ),
       loading: () => _Chip(
         icono: Icons.gps_not_fixed,
         texto: 'Buscando GPS',

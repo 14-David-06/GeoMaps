@@ -682,7 +682,14 @@ class _BarraEstado extends StatelessWidget {
       texto = error!;
       color = Colors.red.shade700;
     } else if (posicion == null) {
-      texto = 'Buscando senal GPS...';
+      // Sin internet no hay GPS asistido y el primer fix tarda: decirlo evita
+      // que alguien crea que la app se colgo y la cierre justo antes del fix.
+      texto = 'Buscando senal GPS... Sin internet puede tardar unos minutos; '
+          'a cielo abierto es mas rapido.';
+      color = Colors.orange.shade800;
+    } else if (Ubicacion.esDeCache(posicion!)) {
+      texto = 'Ultima posicion conocida (${Ubicacion.hace(posicion!)}). '
+          'Buscando senal GPS...';
       color = Colors.orange.shade800;
     } else {
       final p = posicion!;
