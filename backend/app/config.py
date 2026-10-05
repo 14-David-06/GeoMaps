@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -83,6 +84,20 @@ class Settings(BaseSettings):
     # lo lee services/version_app.py. Los dias de gracia viajan adentro del
     # manifiesto, asi que cambiarlos no pide redeploy.
     s3_llave_manifiesto_app: str = "app/version.json"
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _limpiar(cls, valor):
+        """Saca espacios, saltos de linea y comillas de los bordes.
+
+        Un valor pegado en el panel de Vercel con un salto de linea al final, o
+        entre comillas, rompe sin explicacion: AWS_REGION asi hacia fallar toda
+        lectura del bucket (InvalidRegionError) y las apps nunca se enteraban
+        de una version nueva.
+        """
+        if isinstance(valor, str):
+            return valor.strip().strip('"').strip("'").strip()
+        return valor
 
 
 @lru_cache
