@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     # y una equivocada responde SignatureDoesNotMatch, que no dice que el
     # problema sea la region.
     aws_region: str = "us-east-1"
-    s3_bucket: str = "sirius-geomaps"
+    s3_bucket: str = "sirius-geo-maps"
 
     # CloudFront, si lo hay. Vacio = todo sale por URL prefirmada, que es lo
     # correcto para un bucket privado.

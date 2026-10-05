@@ -414,6 +414,9 @@ class VersionResponse(BaseModel):
     bloquea_en: datetime | None = None
     notas: str | None = None
     tamano_bytes: int | None = None
+    # Con `publicada` en falso: por que no se pudo leer el manifiesto (un codigo
+    # de AWS como NoSuchBucket), o nulo si de verdad no hay nada publicado.
+    falla: str | None = None
     sha256: str | None = None
     apk_url: str | None = None
     ahora: datetime
@@ -430,7 +433,9 @@ async def version(
     ahora = datetime.now(timezone.utc)
     manifiesto = await version_app.manifiesto_vigente(settings)
     if manifiesto is None:
-        return VersionResponse(publicada=False, ahora=ahora)
+        return VersionResponse(
+            publicada=False, ahora=ahora, falla=version_app.ultima_falla
+        )
 
     local = version_app.version_de_header(x_app_version)
     try:

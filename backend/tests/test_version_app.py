@@ -136,3 +136,23 @@ def test_sin_cabecera_no_se_bloquea(cliente):
 
 def test_health_nunca_se_bloquea(cliente):
     assert cliente.get("/health", headers={"X-App-Version": "0"}).status_code == 200
+
+
+def test_sin_manifiesto_por_falla_dice_el_codigo(monkeypatch):
+    """Un bucket mal configurado no puede verse igual que "no hay version"."""
+    from botocore.exceptions import ClientError
+
+    def explota(_settings, _llave):
+        raise ClientError({"Error": {"Code": "NoSuchBucket"}}, "GetObject")
+
+    monkeypatch.setattr(version_app.almacenamiento, "leer", explota)
+    version_app.olvidar_cache()
+    try:
+        c = TestClient(main.app)
+        llave = get_settings().app_api_key
+        r = c.get("/v1/version", headers={"X-API-Key": llave} if llave else {})
+        assert r.status_code == 200
+        assert r.json()["publicada"] is False
+        assert r.json()["falla"] == "NoSuchBucket"
+    finally:
+        version_app.olvidar_cache()

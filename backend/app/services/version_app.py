@@ -113,6 +113,22 @@ def version_de_header(valor: str | None) -> int | None:
 
 _cache: tuple[float, Manifiesto | None] | None = None
 
+# Por que fallo la ultima lectura, si fallo. Sin esto, un bucket mal configurado
+# en el despliegue se ve igual que "todavia no se publico nada", y las apps
+# nunca avisan de la version nueva sin que nadie se entere de por que.
+ultima_falla: str | None = None
+
+
+def _codigo_de_falla(exc: Exception) -> str:
+    """El codigo de AWS (NoSuchBucket, InvalidAccessKeyId...) o el tipo de
+    excepcion. Solo el codigo: el mensaje puede traer datos de la cuenta."""
+    respuesta = getattr(exc, "response", None)
+    if isinstance(respuesta, dict):
+        codigo = respuesta.get("Error", {}).get("Code")
+        if codigo:
+            return str(codigo)
+    return type(exc).__name__
+
 
 def _leer_de_s3(settings: Settings) -> Manifiesto | None:
     crudo = almacenamiento.leer(settings, settings.s3_llave_manifiesto_app)
@@ -129,16 +145,18 @@ async def manifiesto_vigente(settings: Settings) -> Manifiesto | None:
     equipo sin app, y lo peor que pasa es que una version vieja trabaje un
     minuto mas.
     """
-    global _cache
+    global _cache, ultima_falla
     ahora = time.monotonic()
     if _cache is not None and ahora - _cache[0] < TTL_CACHE_SEGUNDOS:
         return _cache[1]
 
     try:
         manifiesto = await asyncio.to_thread(_leer_de_s3, settings)
-    except Exception:  # noqa: BLE001
+        ultima_falla = None
+    except Exception as exc:  # noqa: BLE001
         log.exception("No se pudo leer el manifiesto de version")
         manifiesto = None
+        ultima_falla = _codigo_de_falla(exc)
 
     _cache = (ahora, manifiesto)
     return manifiesto
