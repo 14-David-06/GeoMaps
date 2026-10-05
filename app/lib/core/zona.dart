@@ -71,6 +71,15 @@ class Zona {
     return false;
   }
 
+  /// Si el punto cae adentro del predio o a menos de [margenM] de su borde.
+  ///
+  /// El perimetro sale de unir los **lotes**, y lo que no es lote queda
+  /// afuera: oficinas, planta, campamentos, reservas y buena parte de las vias
+  /// entre sectores. Pararse ahi es estar en la plantacion, y el mapa se tiene
+  /// que abrir igual.
+  bool cerca(PuntoLatLon p, double margenM) =>
+      contiene(p) || metrosAlBorde(p) <= margenM;
+
   /// Distancia al borde del predio en metros, para decirle a alguien que esta
   /// afuera **que tan afuera**. "Estas a 800 m del predio" y "estas a 40 km" son
   /// dos situaciones distintas: la primera se resuelve caminando.

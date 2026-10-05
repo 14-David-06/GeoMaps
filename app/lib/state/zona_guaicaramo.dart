@@ -1,7 +1,10 @@
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/parcelas.dart';
+import '../core/ubicacion.dart';
 import '../core/ruteo.dart';
 import '../core/vias.dart';
 import '../core/zona.dart';
@@ -41,7 +44,12 @@ enum MotivoZona {
 }
 
 class EstadoZona {
-  const EstadoZona({required this.motivo, this.metrosAlBorde, this.detalle});
+  const EstadoZona({
+    required this.motivo,
+    this.metrosAlBorde,
+    this.detalle,
+    this.recordadoDe,
+  });
 
   final MotivoZona motivo;
 
@@ -52,12 +60,19 @@ class EstadoZona {
   /// piden acciones distintas de la persona.
   final String? detalle;
 
+  /// Cuando el mapa se habilita por haber estado adentro hace poco, y no por
+  /// un fix de ahora. Nulo si la respuesta es del GPS en vivo.
+  final DateTime? recordadoDe;
+
   bool get habilitado => motivo == MotivoZona.dentro;
 
   /// Lo que se muestra debajo del nombre del mapa.
   String get explicacion {
     switch (motivo) {
       case MotivoZona.dentro:
+        if (recordadoDe != null) {
+          return 'Estabas en la plantacion. Buscando senal GPS...';
+        }
         return 'Estas en la plantacion';
       case MotivoZona.fuera:
         final m = metrosAlBorde;
@@ -74,14 +89,81 @@ class EstadoZona {
   }
 }
 
+/// Cuanto alrededor del perimetro se sigue considerando "en la plantacion".
+///
+/// El perimetro son los lotes con 50 m de margen, y deja afuera todo lo que no
+/// es lote: el centro administrativo, la planta, los campamentos y las vias
+/// entre sectores, que quedan hasta un par de kilometros del lote mas cercano.
+/// Con el margen viejo el mapa no abria justo ahi, adentro del predio.
+const margenPlantacionM = 3000.0;
+
+/// Por cuanto tiempo vale haber estado adentro mientras el GPS no engancha.
+///
+/// En las zonas apartadas, sin red, el primer fix puede tardar minutos o no
+/// llegar bajo palma. Si hace unas horas el telefono estuvo en la plantacion,
+/// sigue en ella: no se le puede pedir a alguien que salga a buscar cielo
+/// abierto para abrir el mapa de donde esta parado.
+const vigenciaRecuerdoAdentro = Duration(hours: 24);
+
+/// La ultima vez que el GPS en vivo ubico el telefono en la plantacion.
+///
+/// Se guarda en el telefono y se lee una vez al arrancar. Solo se usa mientras
+/// no hay fix: en cuanto el GPS responde, manda el GPS.
+final ultimaVezAdentroProvider = NotifierProvider<UltimaVezAdentro, DateTime?>(
+  UltimaVezAdentro.new,
+);
+
+class UltimaVezAdentro extends Notifier<DateTime?> {
+  static const _clave = 'zona.guaicaramo.ultimaVezAdentro';
+
+  DateTime? _escrita;
+
+  @override
+  DateTime? build() {
+    _leer();
+    return null;
+  }
+
+  Future<void> _leer() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ms = prefs.getInt(_clave);
+      if (ms == null) return;
+      final guardada = DateTime.fromMillisecondsSinceEpoch(ms);
+      if (state == null || guardada.isAfter(state!)) state = guardada;
+    } catch (_) {
+      // Sin el recuerdo se espera al GPS, como antes.
+    }
+  }
+
+  /// Anota que ahora mismo esta adentro.
+  ///
+  /// No cambia el estado del provider: se llama mientras se calcula otro
+  /// provider, y Riverpod no deja tocar estado ahi. Lo que importa es que quede
+  /// en disco para el proximo arranque; en esta sesion el GPS ya respondio.
+  void anotar() {
+    final ahora = DateTime.now();
+    final antes = _escrita;
+    // Una escritura por minuto basta: el fix llega cada segundo.
+    if (antes != null && ahora.difference(antes) < const Duration(minutes: 1)) {
+      return;
+    }
+    _escrita = ahora;
+    SharedPreferences.getInstance()
+        .then((prefs) => prefs.setInt(_clave, ahora.millisecondsSinceEpoch))
+        .catchError((_) => false);
+  }
+}
+
 /// Si el telefono esta parado adentro de Guaicaramo, ahora mismo.
 ///
-/// Se recalcula con cada fix. No se guarda ni se cachea entre arranques: una
-/// respuesta de ayer sobre donde esta alguien hoy no vale nada, y guardarla
-/// seria la forma mas facil de habilitar el mapa a 200 km del predio.
+/// Se recalcula con cada fix. Mientras el GPS no engancha se acepta haber
+/// estado adentro en las ultimas [vigenciaRecuerdoAdentro]; un fix que diga
+/// afuera manda siempre sobre ese recuerdo.
 final estadoGuaicaramoProvider = Provider.autoDispose<EstadoZona>((ref) {
   final zona = ref.watch(zonaGuaicaramoProvider);
   final posicion = ref.watch(posicionProvider);
+  final recuerdo = ref.watch(ultimaVezAdentroProvider);
 
   // El asset no esta: este APK se compilo sin los datos del predio. Se dice
   // asi y no "buscando GPS", que dejaria a alguien esperando en un lote una
@@ -90,31 +172,51 @@ final estadoGuaicaramoProvider = Provider.autoDispose<EstadoZona>((ref) {
     return const EstadoZona(motivo: MotivoZona.sinDatos);
   }
 
+  EstadoZona buscando() {
+    if (recuerdo != null &&
+        DateTime.now().difference(recuerdo) < vigenciaRecuerdoAdentro) {
+      return EstadoZona(motivo: MotivoZona.dentro, recordadoDe: recuerdo);
+    }
+    return const EstadoZona(motivo: MotivoZona.buscandoGps);
+  }
+
   // Mientras el asset se lee del disco se muestra lo mismo que sin fix: dura
   // milisegundos y no merece un estado propio en la pantalla.
   final perimetro = zona.valueOrNull;
-  if (perimetro == null) {
-    return const EstadoZona(motivo: MotivoZona.buscandoGps);
-  }
+  if (perimetro == null) return buscando();
 
   return posicion.when(
     data: (p) {
       final punto = PuntoLatLon(lat: p.latitude, lon: p.longitude);
-      if (perimetro.contiene(punto)) {
+      if (perimetro.cerca(punto, _margenSegunPrecision(p))) {
+        if (!Ubicacion.esDeCache(p)) {
+          ref.read(ultimaVezAdentroProvider.notifier).anotar();
+        }
         return const EstadoZona(motivo: MotivoZona.dentro);
+      }
+      // La ultima conocida del telefono dice afuera, pero puede ser de antes
+      // de llegar. Mientras el GPS en vivo no conteste, vale el recuerdo.
+      if (Ubicacion.esDeCache(p)) {
+        final b = buscando();
+        if (b.habilitado) return b;
       }
       return EstadoZona(
         motivo: MotivoZona.fuera,
-        metrosAlBorde: perimetro.metrosAlBorde(punto),
+        metrosAlBorde: perimetro.metrosAlBorde(punto) - margenPlantacionM,
       );
     },
-    loading: () => const EstadoZona(motivo: MotivoZona.buscandoGps),
+    loading: buscando,
     error: (e, _) => EstadoZona(
       motivo: MotivoZona.sinUbicacion,
       detalle: e is PermisoUbicacionDenegado ? e.motivo : null,
     ),
   );
 });
+
+/// El margen, mas lo que el propio fix admite no saber. Un fix de red con
+/// 500 m de error en el borde no puede dejar a alguien afuera.
+double _margenSegunPrecision(Position p) =>
+    margenPlantacionM + (p.accuracy.isFinite ? p.accuracy : 0);
 
 /// Las vias de un predio, leidas del asset.
 ///

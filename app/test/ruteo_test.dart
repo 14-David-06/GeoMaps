@@ -185,6 +185,17 @@ void main() {
       expect(p.hayQueRecalcular(5), isTrue);
     });
 
+    test('el corte entre lo recorrido y lo que falta cae sobre la ruta', () {
+      // A mitad de A-B, 20 m al norte: el pie se lleva sobre la via, no queda
+      // debajo de la posicion cruda.
+      final p = ruta.progreso(const LatLng(4.40118, -72.8975));
+      expect(p.pie.latitude, closeTo(arriba, 0.00002));
+      expect(p.pie.longitude, closeTo(-72.8975, 0.00002));
+      // Va por la via: ni en el tramo a pie del arranque ni en el del final.
+      expect(p.segmento, greaterThan(0));
+      expect(p.segmento, lessThan(ruta.completa.length - 2));
+    });
+
     test('llegando al destino se da por llegado', () {
       expect(ruta.progreso(c).llego, isTrue);
       expect(ruta.progreso(a).llego, isFalse);

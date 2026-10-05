@@ -157,5 +157,14 @@ void main() {
       final d = cuadrado.metrosAlBorde(const PuntoLatLon(lat: 1.5, lon: 0.5));
       expect(d, inInclusiveRange(50000, 60000));
     });
+
+    test('cerca acepta lo que queda a menos del margen del borde', () {
+      // ~1,1 km al norte del borde: afuera del poligono, adentro del margen.
+      const alLado = PuntoLatLon(lat: 1.01, lon: 0.5);
+      expect(cuadrado.contiene(alLado), isFalse);
+      expect(cuadrado.cerca(alLado, 3000), isTrue);
+      expect(cuadrado.cerca(alLado, 500), isFalse);
+      expect(cuadrado.cerca(const PuntoLatLon(lat: 0.5, lon: 0.5), 0), isTrue);
+    });
   });
 }

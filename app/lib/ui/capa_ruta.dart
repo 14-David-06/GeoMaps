@@ -17,32 +17,73 @@ import '../core/ruteo.dart';
 /// Va encima de las vias y debajo del punto propio: la ruta se sigue mirando
 /// donde estoy, no al reves.
 class CapaRuta extends StatelessWidget {
-  const CapaRuta({required this.ruta, super.key});
+  const CapaRuta({required this.ruta, this.progreso, super.key});
 
   final Ruta ruta;
 
+  /// Donde va la persona. Con progreso, la ruta se dibuja **desde la flecha**:
+  /// lo recorrido queda gris y lo que falta en azul, como en un navegador. Sin
+  /// progreso -antes del primer fix- se dibuja entera.
+  final ProgresoRuta? progreso;
+
   static const _color = Color(0xFF2979FF);
+  static const _recorrido = Color(0xFF9E9E9E);
 
   @override
   Widget build(BuildContext context) {
+    final p = progreso;
+    if (p == null) {
+      return PolylineLayer(
+        polylines: [
+          _porVia(ruta.porLaVia),
+          // Los dos tramos a campo traviesa. Solo se dibujan si valen la pena:
+          // 3 m de punteado no se ven y ensucian.
+          if (ruta.metrosHastaLaVia > 8) _aPie([ruta.origen, ruta.entrada]),
+          if (ruta.metrosDesdeLaVia > 8) _aPie([ruta.salida, ruta.destino]),
+        ],
+      );
+    }
+
+    // `completa` es [origen, ...porLaVia, destino]: el tramo 0 es el de a pie
+    // hasta la via, el ultimo el de a pie hasta el punto, y los del medio son
+    // via. El tramo i de la linea completa es el tramo i-1 de `porLaVia`.
+    final linea = ruta.completa;
+    final ultimo = linea.length - 2;
+    final s = p.segmento;
+
+    final recorrido = [...linea.sublist(0, s + 1), p.pie];
+
     return PolylineLayer(
       polylines: [
-        Polyline(
-          points: ruta.porLaVia,
-          color: _color,
-          strokeWidth: 6,
-          // Sobre imagen satelital, una linea de color sin borde oscuro se
-          // pierde contra el agua y contra el suelo humedo.
-          borderColor: Colors.white,
-          borderStrokeWidth: 2,
-        ),
-        // Los dos tramos a campo traviesa. Solo se dibujan si valen la pena:
-        // 3 m de punteado no se ven y ensucian.
-        if (ruta.metrosHastaLaVia > 8) _aPie([ruta.origen, ruta.entrada]),
-        if (ruta.metrosDesdeLaVia > 8) _aPie([ruta.salida, ruta.destino]),
+        if (s > 0 || ruta.metrosHastaLaVia > 8)
+          Polyline(
+            points: recorrido,
+            color: _recorrido.withValues(alpha: 0.8),
+            strokeWidth: 5,
+            borderColor: Colors.white70,
+            borderStrokeWidth: 1,
+          ),
+        if (s == 0) ...[
+          _aPie([p.pie, ruta.entrada]),
+          _porVia(ruta.porLaVia),
+        ] else if (s < ultimo)
+          _porVia([p.pie, ...ruta.porLaVia.sublist(s)]),
+        if (s < ultimo && ruta.metrosDesdeLaVia > 8)
+          _aPie([ruta.salida, ruta.destino]),
+        if (s == ultimo) _aPie([p.pie, ruta.destino]),
       ],
     );
   }
+
+  Polyline _porVia(List<LatLng> puntos) => Polyline(
+    points: puntos,
+    color: _color,
+    strokeWidth: 6,
+    // Sobre imagen satelital, una linea de color sin borde oscuro se pierde
+    // contra el agua y contra el suelo humedo.
+    borderColor: Colors.white,
+    borderStrokeWidth: 2,
+  );
 
   Polyline _aPie(List<LatLng> puntos) => Polyline(
     points: puntos,

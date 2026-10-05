@@ -418,19 +418,38 @@ class Ruta {
       restante += _metros(linea[i], linea[i + 1]);
     }
 
-    return ProgresoRuta(desvioM: desvio, metrosRestantes: restante);
+    return ProgresoRuta(
+      desvioM: desvio,
+      metrosRestantes: restante,
+      segmento: segmento,
+      pie: pie,
+    );
   }
 }
 
 /// Como va alguien respecto de la ruta que se le calculo.
 class ProgresoRuta {
-  const ProgresoRuta({required this.desvioM, required this.metrosRestantes});
+  const ProgresoRuta({
+    required this.desvioM,
+    required this.metrosRestantes,
+    required this.segmento,
+    required this.pie,
+  });
 
   /// A que distancia esta de la linea de la ruta.
   final double desvioM;
 
   /// Cuanto falta siguiendo la ruta desde donde esta.
   final double metrosRestantes;
+
+  /// En que tramo de [Ruta.completa] va: 0 es el tramo a pie hasta la via, el
+  /// ultimo es el tramo a pie desde la via hasta el punto marcado.
+  final int segmento;
+
+  /// La posicion llevada sobre la linea de la ruta. Es donde se corta lo ya
+  /// recorrido de lo que falta, para que la linea en pantalla nazca debajo de
+  /// la flecha y no unos metros al costado.
+  final LatLng pie;
 
   /// Metros de desvio a partir de los cuales se vuelve a calcular.
   ///

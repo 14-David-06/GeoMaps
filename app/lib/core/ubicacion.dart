@@ -62,10 +62,21 @@ class Ubicacion {
   /// donde uno estaba -marcado con [esDeCache]- que una pantalla
   /// "buscando" sin fin.
   ///
-  /// `forceLocationManager` saca el pedido del proveedor de Google Play
-  /// Services y lo manda al LocationManager del sistema, que habla con el chip
-  /// GPS sin depender de la red.
-  static Stream<Position> flujo({int distanciaMinimaM = 3}) async* {
+  /// El proveedor se elige con [soloChipGps]:
+  ///
+  /// - **Fusionado** (por defecto): el de Google Play Services. Sin red usa el
+  ///   chip GPS igual, y con red o wifi da una posicion aproximada en segundos
+  ///   aun bajo techo. Pedir solo el chip -como se hacia antes- dejaba el mapa
+  ///   sin ningun fix nuevo adentro de una oficina o bajo palma cerrada, y la
+  ///   posicion solo "se actualizaba" al reiniciar la app, que volvia a leer la
+  ///   ultima conocida.
+  /// - **Solo chip** (`LocationManager`): para el telefono raro donde el
+  ///   fusionado no entrega nada. La pantalla del mapa alterna entre los dos si
+  ///   pasa un rato sin fixes.
+  static Stream<Position> flujo({
+    int distanciaMinimaM = 3,
+    bool soloChipGps = false,
+  }) async* {
     final cache = await ultimaConocida();
     if (cache != null) {
       _deCache[cache] = true;
@@ -76,7 +87,10 @@ class Ubicacion {
       locationSettings: AndroidSettings(
         accuracy: LocationAccuracy.best,
         distanceFilter: distanciaMinimaM,
-        forceLocationManager: true,
+        // Un fix por segundo: es lo que hace que la flecha y el mapa avancen
+        // seguido al ir en la camioneta, en vez de dar saltos.
+        intervalDuration: const Duration(seconds: 1),
+        forceLocationManager: soloChipGps,
       ),
     );
   }

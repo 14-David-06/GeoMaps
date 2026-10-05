@@ -2,7 +2,7 @@ name: geomaps
 description: "Mapas georreferenciados offline: carga el plano del predio, ubicate en el sin senal, marca y mide"
 publish_to: 'none'
 
-version: 0.2.2+4
+version: 0.2.3+5
 
 environment:
   sdk: ^3.13.2
@@ -52,6 +52,10 @@ dependencies:
   # en el bolsillo. Sin servicio en primer plano, Android mata el proceso a los
   # pocos minutos y el recorrido queda cortado sin aviso.
   flutter_foreground_task: ^9.1.0
+  # Hacia donde mira el telefono estando quieto. El rumbo del GPS sale de dos
+  # posiciones seguidas y parado es ruido: sin brujula, la flecha solo aparecia
+  # andando y el mapa no podia girar hacia el frente como en un navegador.
+  flutter_compass: ^0.8.1
 
   # --- Red --------------------------------------------------------------
   http: ^1.6.0

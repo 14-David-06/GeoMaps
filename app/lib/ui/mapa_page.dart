@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -45,17 +47,58 @@ class MapaPage extends ConsumerStatefulWidget {
   ConsumerState<MapaPage> createState() => _MapaPageState();
 }
 
-class _MapaPageState extends ConsumerState<MapaPage> {
+/// Como acompana la camara a la posicion.
+enum _Seguimiento {
+  /// El mapa quieto donde lo dejo la persona.
+  libre,
+
+  /// Centrado en la posicion, con el norte arriba.
+  centrado,
+
+  /// Como un navegador: centrado, girado para que hacia donde se va quede
+  /// arriba, y con la flecha baja en la pantalla para ver mas camino adelante.
+  rumbo,
+}
+
+class _MapaPageState extends ConsumerState<MapaPage>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final _mapa = MapController();
 
   StreamSubscription<Position>? _suscripcion;
+  StreamSubscription<ServiceStatus>? _servicio;
+  StreamSubscription<CompassEvent>? _brujulaSub;
   Position? _posicion;
   String? _error;
 
-  /// Si el mapa sigue a la posicion. Se apaga en cuanto el usuario arrastra:
-  /// pelear contra un recentrado automatico mientras se mira un lindero es la
-  /// forma mas rapida de que alguien cierre la app.
-  bool _siguiendo = true;
+  /// Hacia donde mira el telefono segun la brujula, en grados desde el norte.
+  double? _brujula;
+
+  /// Que proveedor del GPS se esta usando; ver [Ubicacion.flujo]. Se alterna
+  /// si pasa un rato sin ningun fix, en vez de pedirle a la persona que
+  /// reinicie la app.
+  bool _soloChipGps = false;
+  DateTime _inicioFlujo = DateTime.now();
+  DateTime? _ultimoFixVivo;
+  Timer? _vigia;
+  Timer? _reintento;
+
+  /// Cada arranque del GPS se numera. Volver a la app y prender la ubicacion
+  /// pueden pedir un arranque a la vez, y sin esto quedaban dos flujos vivos.
+  int _arranque = 0;
+
+  /// Como sigue la camara a la posicion. Arranca en modo navegador: abrir el
+  /// mapa tiene que mostrar donde estoy y hacia donde voy sin tocar nada.
+  ///
+  /// Pasa a libre en cuanto el usuario arrastra: pelear contra un recentrado
+  /// automatico mientras se mira un lindero es la forma mas rapida de que
+  /// alguien cierre la app.
+  _Seguimiento _modo = _Seguimiento.rumbo;
+  bool get _siguiendo => _modo != _Seguimiento.libre;
+
+  /// Mueve la camara de a poco hacia la posicion en cada cuadro, en vez de
+  /// saltar con cada fix: los saltos de un segundo marean y no dejan leer.
+  late final Ticker _camara = createTicker(_alCuadro);
+  bool _mapaListo = false;
 
   CapaBase _capa = CapaBase.satelite;
 
@@ -101,31 +144,214 @@ class _MapaPageState extends ConsumerState<MapaPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _arrancarGps();
+    _arrancarBrujula();
+
+    // Si alguien apaga y prende la ubicacion con el mapa abierto, el flujo
+    // muere con el apagado y no vuelve solo.
+    try {
+      _servicio = Geolocator.getServiceStatusStream().listen((estado) {
+        if (estado == ServiceStatus.enabled) _arrancarGps();
+      });
+    } catch (_) {}
+
+    _vigia = Timer.periodic(const Duration(seconds: 15), (_) => _vigilar());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _suscripcion?.cancel();
+    _servicio?.cancel();
+    _brujulaSub?.cancel();
+    _vigia?.cancel();
+    _reintento?.cancel();
+    _camara.dispose();
     super.dispose();
   }
 
+  /// Al volver a la app -de otra app, o con la pantalla apagada- el flujo
+  /// puede haber quedado sin entregar nada. Se vuelve a pedir: es barato y es
+  /// lo que antes obligaba a cerrar y abrir la app.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState estado) {
+    if (estado == AppLifecycleState.resumed) _arrancarGps();
+  }
+
   Future<void> _arrancarGps() async {
+    _reintento?.cancel();
+    final mio = ++_arranque;
     final permiso = await Ubicacion.pedirPermisos();
-    if (!mounted) return;
+    if (!mounted || mio != _arranque) return;
     if (!permiso.concedido) {
-      setState(() => _error = permiso.motivo);
+      await _suscripcion?.cancel();
+      _suscripcion = null;
+      if (mounted) setState(() => _error = permiso.motivo);
       return;
     }
-    setState(() => _error = null);
-    _suscripcion = Ubicacion.flujo().listen((p) {
-      if (!mounted) return;
-      setState(() => _posicion = p);
-      if (_siguiendo) {
-        _mapa.move(LatLng(p.latitude, p.longitude), _mapa.camera.zoom);
-      }
-      _revisarRuta(p);
+    if (_error != null) setState(() => _error = null);
+
+    final anterior = _suscripcion;
+    _suscripcion = null;
+    await anterior?.cancel();
+    if (!mounted || mio != _arranque) return;
+    _inicioFlujo = DateTime.now();
+    // Distancia minima 0: en el mapa se quiere un fix por segundo aun quieto,
+    // para que la precision en pantalla sea la de ahora y para que el vigia
+    // sepa distinguir "parado" de "el GPS no entrega".
+    _suscripcion =
+        Ubicacion.flujo(distanciaMinimaM: 0, soloChipGps: _soloChipGps).listen(
+          _alFix,
+          onError: (Object e) {
+            if (!mounted) return;
+            if (e is LocationServiceDisabledException) {
+              setState(
+                () => _error =
+                    'La ubicacion del telefono esta apagada. Activala para ver '
+                    'donde estas.',
+              );
+              return;
+            }
+            _reintentar();
+          },
+          onDone: _reintentar,
+        );
+  }
+
+  void _reintentar() {
+    _reintento?.cancel();
+    _reintento = Timer(const Duration(seconds: 3), () {
+      if (mounted) _arrancarGps();
     });
+  }
+
+  /// Si el proveedor actual lleva un rato sin dar ni un fix, se prueba el otro.
+  void _vigilar() {
+    if (!mounted || _error != null) return;
+    final ultimo = _ultimoFixVivo;
+    final desde = ultimo == null || ultimo.isBefore(_inicioFlujo)
+        ? _inicioFlujo
+        : ultimo;
+    if (DateTime.now().difference(desde) > const Duration(seconds: 40)) {
+      _soloChipGps = !_soloChipGps;
+      _arrancarGps();
+    }
+  }
+
+  void _alFix(Position p) {
+    if (!mounted) return;
+    final deCache = Ubicacion.esDeCache(p);
+    // Al reabrir el flujo vuelve a llegar la ultima conocida. Si ya hay una
+    // posicion mas nueva, esa vieja no la puede pisar.
+    final actual = _posicion;
+    if (deCache && actual != null && !p.timestamp.isAfter(actual.timestamp)) {
+      return;
+    }
+    if (!deCache) _ultimoFixVivo = DateTime.now();
+    setState(() => _posicion = p);
+    _seguir();
+    _revisarRuta(p);
+  }
+
+  void _arrancarBrujula() {
+    final eventos = FlutterCompass.events;
+    if (eventos == null) return; // Telefono sin magnetometro.
+    _brujulaSub = eventos.listen((e) {
+      final h = e.heading;
+      if (h == null || h.isNaN || !mounted) return;
+      final grados = (h % 360 + 360) % 360;
+      final antes = _brujula;
+      // La brujula manda decenas de lecturas por segundo y tiembla un par de
+      // grados. Redibujar por cada una gasta bateria sin que se note.
+      if (antes != null && _diferenciaAngular(antes, grados).abs() < 2) {
+        return;
+      }
+      setState(() => _brujula = grados);
+      if (_modo == _Seguimiento.rumbo) _seguir();
+    }, onError: (_) {});
+  }
+
+  /// Hacia donde se va: el rumbo del GPS andando, la brujula quieto.
+  ///
+  /// Andando manda el GPS porque la brujula, adentro de una camioneta, la
+  /// tuercen el motor y la carroceria. Quieto el rumbo del GPS es ruido, y ahi
+  /// la brujula es lo unico que sabe hacia donde mira la persona.
+  double? get _rumbo {
+    final p = _posicion;
+    if (p == null) return null;
+    return _rumboConfiable(p) ?? _brujula;
+  }
+
+  /// Pone la camara a perseguir la posicion, si se esta siguiendo.
+  void _seguir() {
+    if (!_siguiendo || !_mapaListo || _posicion == null) return;
+    if (!_camara.isActive) _camara.start();
+  }
+
+  /// Un cuadro de la camara: se acerca una fraccion de lo que falta. Asi el
+  /// movimiento es suave y llega sin pasarse, sea un fix nuevo o la brujula.
+  void _alCuadro(Duration _) {
+    final p = _posicion;
+    if (!mounted || !_siguiendo || !_mapaListo || p == null) {
+      _camara.stop();
+      return;
+    }
+    final camara = _mapa.camera;
+    final rumbo = _modo == _Seguimiento.rumbo ? _rumbo : null;
+    // En modo navegador sin rumbo -quieto y sin brujula- se deja el giro que
+    // tenia: volver al norte con cada fix y girar de nuevo al arrancar marea.
+    final giroObjetivo = rumbo != null
+        ? -rumbo
+        : (_modo == _Seguimiento.rumbo ? camara.rotation : 0.0);
+
+    var objetivo = LatLng(p.latitude, p.longitude);
+    if (rumbo != null) {
+      // La flecha va en el tercio de abajo: lo que importa es lo que viene.
+      final alto = MediaQuery.sizeOf(context).height;
+      final metrosPorPixel =
+          156543.03392 *
+          math.cos(p.latitude * math.pi / 180) /
+          math.pow(2, camara.zoom);
+      objetivo = _adelantar(objetivo, rumbo, alto * 0.22 * metrosPorPixel);
+    }
+
+    const fraccion = 0.18;
+    final dLat = objetivo.latitude - camara.center.latitude;
+    final dLon = objetivo.longitude - camara.center.longitude;
+    final dGiro = _diferenciaAngular(camara.rotation, giroObjetivo);
+
+    final cerca = dLat.abs() < 1e-7 && dLon.abs() < 1e-7 && dGiro.abs() < 0.2;
+    // Lejos -abrir el mapa, o volver de mirar otra zona- se va de una: una
+    // animacion de varios kilometros es un viaje en avion que nadie pidio.
+    final lejos = dLat.abs() > 0.02 || dLon.abs() > 0.02;
+    final f = cerca || lejos ? 1.0 : fraccion;
+
+    _mapa.moveAndRotate(
+      LatLng(
+        camara.center.latitude + dLat * f,
+        camara.center.longitude + dLon * f,
+      ),
+      camara.zoom,
+      camara.rotation + dGiro * f,
+    );
+    if (cerca) _camara.stop();
+  }
+
+  /// El boton de centrar, como en los navegadores: desde libre va a modo
+  /// navegador; despues alterna entre navegador y norte arriba.
+  void _alternarSeguimiento() {
+    setState(() {
+      _modo = switch (_modo) {
+        _Seguimiento.libre => _Seguimiento.rumbo,
+        _Seguimiento.rumbo => _Seguimiento.centrado,
+        _Seguimiento.centrado => _Seguimiento.rumbo,
+      };
+    });
+    if (_mapaListo && _mapa.camera.zoom < 16) {
+      _mapa.move(_mapa.camera.center, 17);
+    }
+    _seguir();
   }
 
   /// Marca un destino en el mapa y traza la ruta por via hasta el.
@@ -199,7 +425,11 @@ class _MapaPageState extends ConsumerState<MapaPage> {
         _ruta = ruta;
         _progreso = ruta?.progreso(desde);
         _calculando = false;
+        // Con una ruta nueva se pasa a modo navegador, como al tocar "iniciar"
+        // en cualquier navegador: lo que se quiere ver ahora es el camino.
+        if (ruta != null && !porDesvio) _modo = _Seguimiento.rumbo;
       });
+      if (ruta != null && !porDesvio) _seguir();
 
       if (ruta == null && avisar) {
         _avisar(
@@ -295,7 +525,11 @@ class _MapaPageState extends ConsumerState<MapaPage> {
               // Guaicaramo, mientras no haya un fix. Abrir en el Atlantico
               // (0,0) haria creer que el GPS fallo.
               initialCenter: aqui ?? const LatLng(4.28, -72.89),
-              initialZoom: 15,
+              initialZoom: 17,
+              onMapReady: () {
+                _mapaListo = true;
+                _seguir();
+              },
               // El ruteo solo existe donde hay vias cargadas: sin el plano
               // del predio no hay por donde trazar nada.
               onLongPress: widget.archivoVias == null
@@ -307,13 +541,12 @@ class _MapaPageState extends ConsumerState<MapaPage> {
                 // que decide los rotulos-, asi que reconstruir la pantalla por
                 // cada cuadro de arrastre era trabajo puro sin resultado.
                 final soltoElSeguimiento = porGesto && _siguiendo;
-                if (!soltoElSeguimiento &&
-                    (camara.zoom - _zoom).abs() < 0.01) {
+                if (!soltoElSeguimiento && (camara.zoom - _zoom).abs() < 0.01) {
                   return;
                 }
                 setState(() {
                   _zoom = camara.zoom;
-                  if (soltoElSeguimiento) _siguiendo = false;
+                  if (soltoElSeguimiento) _modo = _Seguimiento.libre;
                 });
               },
             ),
@@ -322,6 +555,10 @@ class _MapaPageState extends ConsumerState<MapaPage> {
                 urlTemplate: _capa.url,
                 userAgentPackageName: _capa.paquete,
                 maxNativeZoom: _capa.zoomMax,
+                // Pide tambien el anillo de teselas alrededor de lo que se ve:
+                // con red, eso queda en la cache y el borde del mapa no sale
+                // en blanco despues al moverse sin senal.
+                panBuffer: 1,
               ),
 
               // Orden de abajo hacia arriba: imagen, lotes, vias, posicion.
@@ -343,7 +580,7 @@ class _MapaPageState extends ConsumerState<MapaPage> {
                 RotulosBloque(parcelas: parcelas, zoom: _zoom),
 
               // La ruta va sobre las vias y debajo del punto propio.
-              if (_ruta != null) CapaRuta(ruta: _ruta!),
+              if (_ruta != null) CapaRuta(ruta: _ruta!, progreso: _progreso),
               if (_destino != null) MarcadorDestino(destino: _destino!),
 
               if (aqui != null) ...[
@@ -368,7 +605,7 @@ class _MapaPageState extends ConsumerState<MapaPage> {
                       // largo para que la punta se lea como punta.
                       width: 34,
                       height: 34,
-                      child: _PuntoPropio(rumbo: _rumboConfiable(_posicion!)),
+                      child: _PuntoPropio(rumbo: _rumbo),
                     ),
                   ],
                 ),
@@ -419,9 +656,7 @@ class _MapaPageState extends ConsumerState<MapaPage> {
                     tooltip: _verPlanos
                         ? 'Ocultar los planos'
                         : 'Ver los planos (${planos.length})',
-                    child: Icon(
-                      _verPlanos ? Icons.map : Icons.map_outlined,
-                    ),
+                    child: Icon(_verPlanos ? Icons.map : Icons.map_outlined),
                   ),
                 ],
                 if (parcelas != null) ...[
@@ -457,16 +692,17 @@ class _MapaPageState extends ConsumerState<MapaPage> {
                 const SizedBox(height: 12),
                 FloatingActionButton(
                   heroTag: 'centrar',
-                  onPressed: aqui == null
-                      ? null
-                      : () {
-                          setState(() => _siguiendo = true);
-                          _mapa.move(aqui, 17);
-                        },
-                  tooltip: 'Centrar en mi posicion',
-                  child: Icon(
-                    _siguiendo ? Icons.my_location : Icons.location_searching,
-                  ),
+                  onPressed: aqui == null ? null : _alternarSeguimiento,
+                  tooltip: switch (_modo) {
+                    _Seguimiento.libre => 'Seguir mi posicion',
+                    _Seguimiento.rumbo => 'Norte arriba',
+                    _Seguimiento.centrado => 'Girar hacia donde voy',
+                  },
+                  child: Icon(switch (_modo) {
+                    _Seguimiento.libre => Icons.location_searching,
+                    _Seguimiento.rumbo => Icons.navigation,
+                    _Seguimiento.centrado => Icons.my_location,
+                  }),
                 ),
               ],
             ),
@@ -665,6 +901,25 @@ double? _rumboConfiable(Position p) {
   return rumbo;
 }
 
+/// Diferencia de b menos a en grados, por el lado corto: de 350 a 10 son 20,
+/// no -340. Sin esto el mapa da la vuelta entera al cruzar el norte.
+double _diferenciaAngular(double a, double b) {
+  final d = (b - a) % 360;
+  return d > 180 ? d - 360 : d;
+}
+
+/// El punto a [metros] de [desde] en direccion [rumbo]. Plano local: son unos
+/// cientos de metros y no hace falta mas.
+LatLng _adelantar(LatLng desde, double rumbo, double metros) {
+  final r = rumbo * math.pi / 180;
+  final dLat = metros * math.cos(r) / 110540.0;
+  final dLon =
+      metros *
+      math.sin(r) /
+      (111320.0 * math.cos(desde.latitude * math.pi / 180));
+  return LatLng(desde.latitude + dLat, desde.longitude + dLon);
+}
+
 /// La barra de arriba. Dice la precision en metros, que es el dato que decide
 /// si lo que se esta levantando sirve para un lindero o solo para ubicarse.
 class _BarraEstado extends StatelessWidget {
@@ -684,11 +939,13 @@ class _BarraEstado extends StatelessWidget {
     } else if (posicion == null) {
       // Sin internet no hay GPS asistido y el primer fix tarda: decirlo evita
       // que alguien crea que la app se colgo y la cierre justo antes del fix.
-      texto = 'Buscando senal GPS... Sin internet puede tardar unos minutos; '
+      texto =
+          'Buscando senal GPS... Sin internet puede tardar unos minutos; '
           'a cielo abierto es mas rapido.';
       color = Colors.orange.shade800;
     } else if (Ubicacion.esDeCache(posicion!)) {
-      texto = 'Ultima posicion conocida (${Ubicacion.hace(posicion!)}). '
+      texto =
+          'Ultima posicion conocida (${Ubicacion.hace(posicion!)}). '
           'Buscando senal GPS...';
       color = Colors.orange.shade800;
     } else {
