@@ -93,3 +93,10 @@ de Android ve el `localhost` de la maquina, y un celular fisico por USB usa
 Estructura inicial. Ningun modulo esta implementado todavia: los archivos de
 `app/lib` y `backend/app` llevan el contrato que cada uno tiene que cumplir y
 un `TODO` donde va el cuerpo.
+
+## Autoria y propiedad
+
+- **Autor intelectual:** David Hernandez
+- **Titular de los derechos:** Sirius Regenerative Solutions S.A.S ZOMAC
+
+Software propietario. Todos los derechos reservados; ver [LICENSE](LICENSE).
