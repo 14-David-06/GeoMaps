@@ -13,6 +13,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../core/ruteo.dart';
 import '../core/ubicacion.dart';
+import '../state/gps.dart';
 import '../state/providers.dart';
 import '../state/sesion.dart';
 import '../state/zona_guaicaramo.dart';
@@ -61,30 +62,18 @@ enum _Seguimiento {
 }
 
 class _MapaPageState extends ConsumerState<MapaPage>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin {
   final _mapa = MapController();
 
+  /// La posicion sale del [Gps] compartido, que es quien reintenta, alterna de
+  /// proveedor y rearranca al volver a la app.
   StreamSubscription<Position>? _suscripcion;
-  StreamSubscription<ServiceStatus>? _servicio;
   StreamSubscription<CompassEvent>? _brujulaSub;
   Position? _posicion;
   String? _error;
 
   /// Hacia donde mira el telefono segun la brujula, en grados desde el norte.
   double? _brujula;
-
-  /// Que proveedor del GPS se esta usando; ver [Ubicacion.flujo]. Se alterna
-  /// si pasa un rato sin ningun fix, en vez de pedirle a la persona que
-  /// reinicie la app.
-  bool _soloChipGps = false;
-  DateTime _inicioFlujo = DateTime.now();
-  DateTime? _ultimoFixVivo;
-  Timer? _vigia;
-  Timer? _reintento;
-
-  /// Cada arranque del GPS se numera. Volver a la app y prender la ubicacion
-  /// pueden pedir un arranque a la vez, y sin esto quedaban dos flujos vivos.
-  int _arranque = 0;
 
   /// Como sigue la camara a la posicion. Arranca en modo navegador: abrir el
   /// mapa tiene que mostrar donde estoy y hacia donde voy sin tocar nada.
@@ -144,112 +133,33 @@ class _MapaPageState extends ConsumerState<MapaPage>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _arrancarGps();
+    _suscripcion = Gps.instancia.posiciones.listen(
+      _alFix,
+      onError: (Object e) {
+        if (!mounted || e is! PermisoUbicacionDenegado) return;
+        setState(() => _error = e.motivo);
+      },
+    );
+    // Entrar al mapa es la senal mas clara de que se quiere un fix ya: si el
+    // flujo quedo mudo, no se espera al vigia.
+    Gps.instancia.reiniciar();
     _arrancarBrujula();
-
-    // Si alguien apaga y prende la ubicacion con el mapa abierto, el flujo
-    // muere con el apagado y no vuelve solo.
-    try {
-      _servicio = Geolocator.getServiceStatusStream().listen((estado) {
-        if (estado == ServiceStatus.enabled) _arrancarGps();
-      });
-    } catch (_) {}
-
-    _vigia = Timer.periodic(const Duration(seconds: 15), (_) => _vigilar());
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _suscripcion?.cancel();
-    _servicio?.cancel();
     _brujulaSub?.cancel();
-    _vigia?.cancel();
-    _reintento?.cancel();
     _camara.dispose();
     super.dispose();
   }
 
-  /// Al volver a la app -de otra app, o con la pantalla apagada- el flujo
-  /// puede haber quedado sin entregar nada. Se vuelve a pedir: es barato y es
-  /// lo que antes obligaba a cerrar y abrir la app.
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState estado) {
-    if (estado == AppLifecycleState.resumed) _arrancarGps();
-  }
-
-  Future<void> _arrancarGps() async {
-    _reintento?.cancel();
-    final mio = ++_arranque;
-    final permiso = await Ubicacion.pedirPermisos();
-    if (!mounted || mio != _arranque) return;
-    if (!permiso.concedido) {
-      await _suscripcion?.cancel();
-      _suscripcion = null;
-      if (mounted) setState(() => _error = permiso.motivo);
-      return;
-    }
-    if (_error != null) setState(() => _error = null);
-
-    final anterior = _suscripcion;
-    _suscripcion = null;
-    await anterior?.cancel();
-    if (!mounted || mio != _arranque) return;
-    _inicioFlujo = DateTime.now();
-    // Distancia minima 0: en el mapa se quiere un fix por segundo aun quieto,
-    // para que la precision en pantalla sea la de ahora y para que el vigia
-    // sepa distinguir "parado" de "el GPS no entrega".
-    _suscripcion =
-        Ubicacion.flujo(distanciaMinimaM: 0, soloChipGps: _soloChipGps).listen(
-          _alFix,
-          onError: (Object e) {
-            if (!mounted) return;
-            if (e is LocationServiceDisabledException) {
-              setState(
-                () => _error =
-                    'La ubicacion del telefono esta apagada. Activala para ver '
-                    'donde estas.',
-              );
-              return;
-            }
-            _reintentar();
-          },
-          onDone: _reintentar,
-        );
-  }
-
-  void _reintentar() {
-    _reintento?.cancel();
-    _reintento = Timer(const Duration(seconds: 3), () {
-      if (mounted) _arrancarGps();
-    });
-  }
-
-  /// Si el proveedor actual lleva un rato sin dar ni un fix, se prueba el otro.
-  void _vigilar() {
-    if (!mounted || _error != null) return;
-    final ultimo = _ultimoFixVivo;
-    final desde = ultimo == null || ultimo.isBefore(_inicioFlujo)
-        ? _inicioFlujo
-        : ultimo;
-    if (DateTime.now().difference(desde) > const Duration(seconds: 40)) {
-      _soloChipGps = !_soloChipGps;
-      _arrancarGps();
-    }
-  }
-
   void _alFix(Position p) {
     if (!mounted) return;
-    final deCache = Ubicacion.esDeCache(p);
-    // Al reabrir el flujo vuelve a llegar la ultima conocida. Si ya hay una
-    // posicion mas nueva, esa vieja no la puede pisar.
-    final actual = _posicion;
-    if (deCache && actual != null && !p.timestamp.isAfter(actual.timestamp)) {
-      return;
-    }
-    if (!deCache) _ultimoFixVivo = DateTime.now();
-    setState(() => _posicion = p);
+    setState(() {
+      _posicion = p;
+      _error = null;
+    });
     _seguir();
     _revisarRuta(p);
   }

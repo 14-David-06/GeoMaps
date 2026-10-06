@@ -71,7 +71,7 @@ class Ubicacion {
   ///   posicion solo "se actualizaba" al reiniciar la app, que volvia a leer la
   ///   ultima conocida.
   /// - **Solo chip** (`LocationManager`): para el telefono raro donde el
-  ///   fusionado no entrega nada. La pantalla del mapa alterna entre los dos si
+  ///   fusionado no entrega nada. El [Gps] de la app alterna entre los dos si
   ///   pasa un rato sin fixes.
   static Stream<Position> flujo({
     int distanciaMinimaM = 3,
@@ -101,7 +101,11 @@ class Ubicacion {
 
   static Future<Position?> ultimaConocida() async {
     try {
-      final p = await Geolocator.getLastKnownPosition();
+      // Con tope: si el telefono no contesta, se sigue al GPS en vivo en vez
+      // de quedar esperando una respuesta que puede no llegar.
+      final p = await Geolocator.getLastKnownPosition().timeout(
+        const Duration(seconds: 3),
+      );
       if (p == null) return null;
       if (DateTime.now().difference(p.timestamp) > antiguedadMaximaCache) {
         return null;
