@@ -2,7 +2,7 @@ name: geomaps
 description: "Mapas georreferenciados offline: carga el plano del predio, ubicate en el sin senal, marca y mide"
 publish_to: 'none'
 
-version: 0.2.4+6
+version: 0.2.5+7
 
 environment:
   sdk: ^3.13.2
