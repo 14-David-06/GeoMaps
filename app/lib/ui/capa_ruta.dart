@@ -133,6 +133,7 @@ class PanelRuta extends StatelessWidget {
     required this.progreso,
     required this.calculando,
     required this.onCerrar,
+    this.nombreDestino,
     super.key,
   });
 
@@ -143,6 +144,10 @@ class PanelRuta extends StatelessWidget {
 
   /// Si en este momento se esta recalculando por un desvio.
   final bool calculando;
+
+  /// A donde va, si el destino tiene nombre (un acopio). Nulo para un punto
+  /// marcado a mano.
+  final String? nombreDestino;
 
   final VoidCallback onCerrar;
 
@@ -180,6 +185,17 @@ class PanelRuta extends StatelessWidget {
                 // el Stack y la tarjeta tapa el mapa entero.
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (nombreDestino != null)
+                    Text(
+                      nombreDestino!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: colores.primary,
+                      ),
+                    ),
                   Text(
                     '${formatearDistancia(restantes)}  ·  ${formatearMinutos(minutos)}',
                     style: const TextStyle(
@@ -227,7 +243,10 @@ class PanelRuta extends StatelessWidget {
 /// descubre es una funcion que no existe. Se muestra hasta que la persona marca
 /// su primer destino, y despues no vuelve.
 class PistaRuta extends StatelessWidget {
-  const PistaRuta({super.key});
+  const PistaRuta({this.conAcopios = false, super.key});
+
+  /// Si el predio tiene acopios, que tambien se tocan para ir a ellos.
+  final bool conAcopios;
 
   @override
   Widget build(BuildContext context) {
@@ -237,14 +256,19 @@ class PistaRuta extends StatelessWidget {
         color: Colors.black.withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.touch_app_outlined, color: Colors.white, size: 17),
-          SizedBox(width: 8),
-          Text(
-            'Manten pulsado un punto para trazar la ruta',
-            style: TextStyle(color: Colors.white, fontSize: 12.5),
+          const Icon(Icons.touch_app_outlined, color: Colors.white, size: 17),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              conAcopios
+                  ? 'Toca un acopio o manten pulsado un punto para trazar '
+                        'la ruta'
+                  : 'Manten pulsado un punto para trazar la ruta',
+              style: const TextStyle(color: Colors.white, fontSize: 12.5),
+            ),
           ),
         ],
       ),

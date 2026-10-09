@@ -11,16 +11,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../core/acopios.dart';
+import '../core/parcelas.dart';
 import '../core/ruteo.dart';
 import '../core/ubicacion.dart';
+import '../core/vias.dart';
 import '../state/gps.dart';
 import '../state/providers.dart';
 import '../state/sesion.dart';
 import '../state/zona_guaicaramo.dart';
+import 'capa_acopios.dart';
 import 'capa_parcelas.dart';
 import 'capa_pdf.dart';
 import 'capa_ruta.dart';
 import 'capa_vias.dart';
+import 'capas_panel.dart';
 import 'importar_mapa_page.dart';
 
 /// La pantalla principal: el mapa.
@@ -35,7 +40,12 @@ import 'importar_mapa_page.dart';
 /// deciden todo el proyecto: si `flutter_map` rinde con imagen satelital, y si
 /// el GPS entrega precision util bajo condiciones de campo.
 class MapaPage extends ConsumerStatefulWidget {
-  const MapaPage({this.archivoVias, this.archivoParcelas, super.key});
+  const MapaPage({
+    this.archivoVias,
+    this.archivoParcelas,
+    this.archivoAcopios,
+    super.key,
+  });
 
   /// El asset de vias del predio que se esta abriendo, si es que abre uno.
   /// Nulo es el mapa a secas: satelite o calles y la posicion propia.
@@ -43,6 +53,9 @@ class MapaPage extends ConsumerStatefulWidget {
 
   /// El asset de lotes del predio (bloques y parcelas), si los tiene.
   final String? archivoParcelas;
+
+  /// El asset de acopios del predio, si los tiene.
+  final String? archivoAcopios;
 
   @override
   ConsumerState<MapaPage> createState() => _MapaPageState();
@@ -91,12 +104,10 @@ class _MapaPageState extends ConsumerState<MapaPage>
 
   CapaBase _capa = CapaBase.satelite;
 
-  /// Las vias del predio se pueden apagar. Sobre un lote recien sembrado, las
-  /// lineas tapan justo lo que se fue a mirar.
-  bool _verVias = true;
-
-  /// Los linderos de los lotes, igual: se apagan para mirar el cultivo limpio.
-  bool _verParcelas = true;
+  /// Las capas del predio que se estan dibujando. Todas se pueden apagar:
+  /// sobre un lote recien sembrado, las lineas tapan justo lo que se fue a
+  /// mirar. Se encienden y apagan desde el panel de capas.
+  final Set<CapaPredio> _visibles = {...CapaPredio.values};
 
   /// Los planos importados se apagan todos juntos desde el mapa. Encender cada
   /// uno por separado es cosa de la pantalla de capas; aca lo que se necesita
@@ -109,6 +120,14 @@ class _MapaPageState extends ConsumerState<MapaPage>
   /// mapa: una ruta calculada hace media hora, desde donde estaba antes, no
   /// sirve. Se vuelve a marcar el punto y listo.
   LatLng? _destino;
+
+  /// Como se llama el destino, si es un lugar con nombre -un acopio- y no un
+  /// punto marcado a mano. Va en la tarjeta de la ruta.
+  String? _nombreDestino;
+
+  /// El acopio que se toco o se busco, antes de pedir la ruta hasta el.
+  Acopio? _acopio;
+
   Ruta? _ruta;
   ProgresoRuta? _progreso;
   bool _calculando = false;
@@ -269,9 +288,13 @@ class _MapaPageState extends ConsumerState<MapaPage>
   /// El gesto es mantener pulsado y no un toque simple: sobre un mapa, el toque
   /// simple es lo que uno hace sin querer mientras arrastra, y poner un destino
   /// cada vez que alguien roza la pantalla vuelve el mapa inusable.
-  void _fijarDestino(LatLng punto) {
+  void _fijarDestino(LatLng punto, {String? nombre}) {
     setState(() {
       _destino = punto;
+      _nombreDestino = nombre;
+      // Un punto marcado a mano deja de lado el acopio elegido: la ruta ya
+      // no va a el.
+      if (nombre == null) _acopio = null;
       _ruta = null;
       _progreso = null;
       _pistaVista = true;
@@ -282,6 +305,8 @@ class _MapaPageState extends ConsumerState<MapaPage>
   void _quitarRuta() {
     setState(() {
       _destino = null;
+      _nombreDestino = null;
+      _acopio = null;
       _ruta = null;
       _progreso = null;
       _calculando = false;
@@ -379,8 +404,11 @@ class _MapaPageState extends ConsumerState<MapaPage>
     setState(() => _progreso = progreso);
 
     if (progreso.llego) {
+      final nombre = _nombreDestino;
       _quitarRuta();
-      _avisar('Llegaste al punto marcado.');
+      _avisar(
+        nombre == null ? 'Llegaste al punto marcado.' : 'Llegaste: $nombre.',
+      );
       return;
     }
 
@@ -396,6 +424,134 @@ class _MapaPageState extends ConsumerState<MapaPage>
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(texto), duration: const Duration(seconds: 5)),
+    );
+  }
+
+  /// Un toque simple: elige el acopio que quede debajo del dedo, o suelta el
+  /// que estaba elegido si se toco en otro lado.
+  void _alTocar(LatLng punto, AcopiosPredio? acopios) {
+    // Con un destino marcado, tocar el mapa no cambia nada: la tarjeta de la
+    // ruta manda. Un roce mientras se maneja no puede mover el resaltado a otro
+    // acopio que no es a donde lleva la ruta. Se cierra la ruta y se elige.
+    if (_destino != null) return;
+
+    final visibles =
+        acopios != null &&
+        _visibles.contains(CapaPredio.acopios) &&
+        _zoom >= CapaAcopios.zoomMinimo;
+    final tocado = visibles
+        ? acopioCercano(
+            acopios: acopios,
+            camara: _mapa.camera,
+            // Se pasa por la camara y no se usa la posicion del evento: asi
+            // el toque y los acopios se miden en la misma pantalla.
+            toque: _mapa.camera.latLngToScreenOffset(punto),
+          )
+        : null;
+
+    if (tocado == _acopio) return;
+    setState(() => _acopio = tocado);
+  }
+
+  /// Muestra un acopio elegido desde el buscador: lo centra y lo deja elegido,
+  /// con su tarjeta abajo para pedir la ruta.
+  void _mostrarAcopio(Acopio a) {
+    setState(() {
+      _acopio = a;
+      // Para ver el acopio hay que soltar la posicion: si no, el seguimiento
+      // devuelve la camara a la flecha en el cuadro siguiente.
+      _modo = _Seguimiento.libre;
+    });
+    if (_mapaListo) {
+      _mapa.move(a.punto, math.max(_mapa.camera.zoom, 16));
+    }
+  }
+
+  void _irAlAcopio(Acopio a) {
+    _fijarDestino(a.punto, nombre: a.etiqueta);
+  }
+
+  Future<void> _buscarAcopio(AcopiosPredio acopios) async {
+    final elegido = await buscarAcopio(context, acopios);
+    if (elegido == null || !mounted) return;
+    // Buscar es pedir ir a otro lado: la ruta anterior se suelta para que la
+    // tarjeta del acopio nuevo, con su "Como llegar", quede a la vista.
+    if (_destino != null) _quitarRuta();
+    // Si se busco, es para verlo: se encienden los acopios si estaban
+    // apagados, porque si no el resaltado aparece solo, sin sus vecinos.
+    _visibles.add(CapaPredio.acopios);
+    _mostrarAcopio(elegido);
+  }
+
+  /// El panel de capas, que sube desde abajo sobre el mapa.
+  void _abrirCapas({
+    required int planos,
+    required ParcelasPredio? parcelas,
+    required ViasPredio? vias,
+    required AcopiosPredio? acopios,
+  }) {
+    final capas = [
+      if (parcelas != null) CapaPredio.lotes,
+      if (vias != null) CapaPredio.vias,
+      if (acopios != null) CapaPredio.acopios,
+    ];
+    final cuantos = {
+      if (parcelas != null) CapaPredio.lotes: parcelas.parcelas.length,
+      if (vias != null) CapaPredio.vias: vias.cuantas,
+      if (acopios != null) CapaPredio.acopios: acopios.acopios.length,
+    };
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      // Transparente arriba: lo que se apaga se tiene que ver apagarse.
+      barrierColor: Colors.black12,
+      builder: (hoja) => StatefulBuilder(
+        // El estado vive en el mapa; la hoja solo se redibuja con el.
+        builder: (hoja, redibujar) {
+          void cambiar(VoidCallback c) {
+            setState(c);
+            redibujar(() {});
+          }
+
+          return ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(hoja).height * 0.8,
+            ),
+            child: PanelCapas(
+              base: _capa,
+              onBase: (c) => cambiar(() => _capa = c),
+              capas: capas,
+              visibles: _visibles,
+              cuantos: cuantos,
+              onCapa: (capa, ver) => cambiar(() {
+                ver ? _visibles.add(capa) : _visibles.remove(capa);
+                if (capa == CapaPredio.acopios && !ver && _destino == null) {
+                  _acopio = null;
+                }
+              }),
+              planos: planos,
+              verPlanos: _verPlanos,
+              onPlanos: (v) => cambiar(() => _verPlanos = v),
+              onAdministrarPlanos: () {
+                Navigator.pop(hoja);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ImportarMapaPage(),
+                  ),
+                );
+              },
+              onBuscarAcopio: acopios == null
+                  ? null
+                  : () {
+                      Navigator.pop(hoja);
+                      _buscarAcopio(acopios);
+                    },
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -421,9 +577,23 @@ class _MapaPageState extends ConsumerState<MapaPage>
               .watch(parcelasPredioProvider(widget.archivoParcelas!))
               .valueOrNull;
 
-    // Cuando hay ruta, la tarjeta de abajo ocupa lugar: la leyenda y los
-    // botones suben para no quedar debajo de ella.
-    final hayPanel = _ruta != null || _calculando;
+    final acopios = widget.archivoAcopios == null
+        ? null
+        : ref.watch(acopiosPredioProvider(widget.archivoAcopios!)).valueOrNull;
+
+    final verParcelas =
+        parcelas != null && _visibles.contains(CapaPredio.lotes);
+    final verVias = vias != null && _visibles.contains(CapaPredio.vias);
+    final verAcopios =
+        acopios != null && _visibles.contains(CapaPredio.acopios);
+
+    // La tarjeta del acopio elegido se muestra mientras no haya ruta: en
+    // cuanto se pide la ruta, la tarjeta de la ruta toma su lugar.
+    final fichaAcopio = _acopio != null && _destino == null;
+
+    // Cuando hay una tarjeta abajo ocupa lugar: los botones suben para no
+    // quedar debajo de ella.
+    final hayPanel = _ruta != null || _calculando || fichaAcopio;
     final abajo = hayPanel ? 116.0 : 32.0;
 
     return Scaffold(
@@ -445,6 +615,9 @@ class _MapaPageState extends ConsumerState<MapaPage>
               onLongPress: widget.archivoVias == null
                   ? null
                   : (_, punto) => _fijarDestino(punto),
+              onTap: acopios == null
+                  ? null
+                  : (_, punto) => _alTocar(punto, acopios),
               onPositionChanged: (camara, porGesto) {
                 // Esto llega en cada cuadro mientras alguien mueve el mapa.
                 // Arrastrar no cambia nada de lo que se dibuja -el zoom es lo
@@ -479,18 +652,25 @@ class _MapaPageState extends ConsumerState<MapaPage>
               // que la app conoce de verdad no los puede tapar una hoja.
               if (_verPlanos && planos.isNotEmpty) CapaPdf(planos: planos),
 
-              if (parcelas != null && _verParcelas)
-                CapaParcelas(parcelas: parcelas, zoom: _zoom),
+              if (verParcelas) CapaParcelas(parcelas: parcelas, zoom: _zoom),
 
               // Las vias van sobre la imagen y debajo del punto propio: saber
               // donde estoy no lo puede tapar una linea.
-              if (vias != null && _verVias) CapaVias(vias: vias),
+              if (verVias) CapaVias(vias: vias),
 
-              if (parcelas != null && _verParcelas)
-                RotulosBloque(parcelas: parcelas, zoom: _zoom),
+              if (verParcelas) RotulosBloque(parcelas: parcelas, zoom: _zoom),
 
               // La ruta va sobre las vias y debajo del punto propio.
               if (_ruta != null) CapaRuta(ruta: _ruta!, progreso: _progreso),
+
+              // Los acopios van sobre la ruta: la ruta termina en uno, y el
+              // acopio tiene que seguir viendose debajo del alfiler.
+              if (verAcopios)
+                CapaAcopios(
+                  acopios: acopios,
+                  zoom: _zoom,
+                  seleccionado: _acopio,
+                ),
               if (_destino != null) MarcadorDestino(destino: _destino!),
 
               if (aqui != null) ...[
@@ -523,8 +703,6 @@ class _MapaPageState extends ConsumerState<MapaPage>
             ],
           ),
           _BarraEstado(posicion: _posicion, error: _error),
-          if (vias != null && _verVias)
-            Positioned(left: 16, bottom: abajo, child: const LeyendaVias()),
 
           // La pista de como se pide una ruta, arriba y no abajo: abajo pelea
           // con la leyenda y los botones, y ahi nadie la lee.
@@ -533,7 +711,7 @@ class _MapaPageState extends ConsumerState<MapaPage>
               top: MediaQuery.of(context).padding.top + 70,
               left: 0,
               right: 0,
-              child: const Center(child: PistaRuta()),
+              child: Center(child: PistaRuta(conAcopios: acopios != null)),
             ),
 
           Positioned(
@@ -547,57 +725,29 @@ class _MapaPageState extends ConsumerState<MapaPage>
                   tooltip: 'Mi cuenta',
                   child: const Icon(Icons.account_circle_outlined),
                 ),
+                if (acopios != null) ...[
+                  const SizedBox(height: 12),
+                  FloatingActionButton.small(
+                    heroTag: 'buscar',
+                    onPressed: () => _buscarAcopio(acopios),
+                    tooltip: 'Buscar un acopio',
+                    child: const Icon(Icons.search),
+                  ),
+                ],
                 const SizedBox(height: 12),
+                // Un solo boton para todas las capas. Un boton por capa ya
+                // eran cinco y tapaban el costado del mapa; con cada capa
+                // nueva iba a ser uno mas.
                 FloatingActionButton.small(
                   heroTag: 'capas',
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const ImportarMapaPage(),
-                    ),
+                  onPressed: () => _abrirCapas(
+                    planos: planos.length,
+                    parcelas: parcelas,
+                    vias: vias,
+                    acopios: acopios,
                   ),
-                  tooltip: 'Capas y planos',
+                  tooltip: 'Capas',
                   child: const Icon(Icons.layers_outlined),
-                ),
-                if (planos.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  FloatingActionButton.small(
-                    heroTag: 'planos',
-                    onPressed: () => setState(() => _verPlanos = !_verPlanos),
-                    tooltip: _verPlanos
-                        ? 'Ocultar los planos'
-                        : 'Ver los planos (${planos.length})',
-                    child: Icon(_verPlanos ? Icons.map : Icons.map_outlined),
-                  ),
-                ],
-                if (parcelas != null) ...[
-                  const SizedBox(height: 12),
-                  FloatingActionButton.small(
-                    heroTag: 'parcelas',
-                    onPressed: () =>
-                        setState(() => _verParcelas = !_verParcelas),
-                    tooltip: _verParcelas
-                        ? 'Ocultar los lotes'
-                        : 'Ver los lotes (${parcelas.parcelas.length})',
-                    child: Icon(_verParcelas ? Icons.grid_on : Icons.grid_off),
-                  ),
-                ],
-                if (vias != null) ...[
-                  const SizedBox(height: 12),
-                  FloatingActionButton.small(
-                    heroTag: 'vias',
-                    onPressed: () => setState(() => _verVias = !_verVias),
-                    tooltip: _verVias
-                        ? 'Ocultar las vias del predio'
-                        : 'Ver las vias del predio (${vias.cuantas})',
-                    child: Icon(_verVias ? Icons.route : Icons.route_outlined),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                FloatingActionButton.small(
-                  heroTag: 'capa',
-                  onPressed: () => setState(() => _capa = _capa.otra),
-                  tooltip: _capa.otra.titulo,
-                  child: Icon(_capa.otra.icono),
                 ),
                 const SizedBox(height: 12),
                 FloatingActionButton(
@@ -625,6 +775,7 @@ class _MapaPageState extends ConsumerState<MapaPage>
                   ruta: _ruta!,
                   progreso: _progreso,
                   calculando: _calculando,
+                  nombreDestino: _nombreDestino,
                   onCerrar: _quitarRuta,
                 ),
               ),
@@ -633,6 +784,18 @@ class _MapaPageState extends ConsumerState<MapaPage>
             const Align(
               alignment: Alignment.bottomCenter,
               child: SafeArea(child: _CalculandoRuta()),
+            )
+          else if (fichaAcopio)
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: SafeArea(
+                child: FichaAcopio(
+                  acopio: _acopio!,
+                  desde: aqui,
+                  onIr: () => _irAlAcopio(_acopio!),
+                  onCerrar: () => setState(() => _acopio = null),
+                ),
+              ),
             ),
         ],
       ),

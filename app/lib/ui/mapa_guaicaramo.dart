@@ -40,6 +40,7 @@ class MapaGuaicaramo extends ConsumerWidget {
                   builder: (_) => const MapaPage(
                     archivoVias: 'guaicaramo-vias.json',
                     archivoParcelas: 'guaicaramo-parcelas.json',
+                    archivoAcopios: 'guaicaramo-acopios.json',
                   ),
                 ),
               )

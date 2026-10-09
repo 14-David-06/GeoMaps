@@ -180,3 +180,17 @@ empezaria a rotular lotes con el nombre del vecino.
 Cada script imprime sus propios controles al terminar. Los numeros concretos del
 predio salen de ahi, que es donde sirven: no se copian a esta documentacion, que
 es publica.
+
+## Acopios de un predio
+
+`acopios_guaicaramo.py` genera el asset con los acopios, que en el mapa se tocan
+para trazar la ruta hasta ellos. No vuelve a leer el plano: parte de
+`map-security/public/acopios-guaicaramo.geojson`, que ya saca el parser de
+map-security (`scripts/pdf-acopios-a-geojson.py`) desde la capa `Acopios`.
+
+```bash
+python tools/acopios_guaicaramo.py [<acopios.geojson>]
+```
+
+Imprime dos controles: cuantos pares (lote, numero) se repiten -tiene que ser
+casi ninguno- y cuantos acopios caen fuera del perimetro del predio.

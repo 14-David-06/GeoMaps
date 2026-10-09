@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/acopios.dart';
 import '../core/parcelas.dart';
 import '../core/ubicacion.dart';
 import '../core/ruteo.dart';
@@ -236,6 +237,14 @@ final parcelasPredioProvider = FutureProvider.family<ParcelasPredio, String>((
   archivo,
 ) {
   return ParcelasPredio.cargar(archivo);
+});
+
+/// Los acopios de un predio, leidos del asset.
+final acopiosPredioProvider = FutureProvider.family<AcopiosPredio, String>((
+  ref,
+  archivo,
+) {
+  return AcopiosPredio.cargar(archivo);
 });
 
 /// La red vial ruteable de un predio: el grafo que responde "por donde se llega

@@ -19,6 +19,7 @@ pip install pypdf shapely
 python tools/perimetro_guaicaramo.py "<ruta>/Acopios Guaicaramo 2026.pdf"
 python tools/parcelas_guaicaramo.py  "<ruta>/Acopios Guaicaramo 2026.pdf"
 python tools/vias_guaicaramo.py      "<ruta>/vias.kmz"
+python tools/acopios_guaicaramo.py   # lee map-security/public/acopios-guaicaramo.geojson
 ```
 
 Cada uno imprime sus propios controles de calidad al terminar. `tools/README.md`
