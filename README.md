@@ -98,7 +98,7 @@ de Android ve el `localhost` de la maquina, y un celular fisico por USB usa
 | Mapa satelital y de calles con la posicion, la precision, la escala y el giro tipo navegador | `ui/mapa_page.dart` |
 | Mapa de Guaicaramo: lotes, vias, acopios, y ruta por las vias con recalculo | `core/ruteo.dart` |
 | Buscar un acopio por su numero y elegir el bloque con un toque, en letra grande y con el mas cercano primero | `ui/capa_acopios.dart` |
-| Planos de topografia (GeoPDF) importados como capa | `ui/importar_mapa_page.dart` |
+| Planos de topografia y **PDF cartograficos** (vias, planchas) importados como capa: lee la georreferencia de Adobe y la de TerraGo, tambien en archivos comprimidos o de varias hojas, y al terminar encuadra el mapa sobre el plano | `core/geopdf.dart`, `ui/importar_mapa_page.dart` |
 | **Bajar una zona del satelite** para verla sin senal (necesita red para bajarla) | `ui/descargar_region_page.dart` |
 | Donde el satelite no tiene imagen del nivel pedido (el cartel "Map data not yet available") o no hay senal, el mapa muestra la del nivel anterior ampliada | `core/fuente_teselas.dart` |
 | **Iniciar una ruta** y, al llegar o terminarla, **calificar** de 1 a 5 el camino por donde se paso; la nota queda con el recorrido grabado | `ui/calificar_ruta.dart` |

@@ -826,6 +826,30 @@ class _MapaPageState extends ConsumerState<MapaPage>
     );
   }
 
+  /// La pantalla de planos. Vuelve con las esquinas del plano que se acaba de
+  /// importar, o del que se pidio ver, y el mapa se encuadra sobre el.
+  ///
+  /// Sin esto, importar el mapa vial de otro municipio parece no hacer nada:
+  /// la capa queda cargada, pero a kilometros de lo que se esta mirando.
+  Future<void> _abrirPlanos() async {
+    final esquinas = await Navigator.of(context).push<List<LatLng>>(
+      MaterialPageRoute(builder: (_) => const ImportarMapaPage()),
+    );
+    if (esquinas == null || esquinas.isEmpty || !mounted) return;
+    setState(() {
+      _verPlanos = true;
+      _modo = _Seguimiento.libre;
+    });
+    if (!_mapaListo) return;
+    _mapa.fitCamera(
+      CameraFit.coordinates(
+        coordinates: esquinas,
+        maxZoom: 18,
+        padding: const EdgeInsets.fromLTRB(32, 120, 32, 120),
+      ),
+    );
+  }
+
   /// La lista de lo levantado: se elige algo y se lo ve en el mapa.
   Future<void> _abrirLevantados() async {
     final elegido = await elegirLevantado(context);
@@ -986,11 +1010,7 @@ class _MapaPageState extends ConsumerState<MapaPage>
               onPlanos: (v) => cambiar(() => _verPlanos = v),
               onAdministrarPlanos: () {
                 Navigator.pop(hoja);
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const ImportarMapaPage(),
-                  ),
-                );
+                _abrirPlanos();
               },
               onBuscarAcopio: acopios == null
                   ? null

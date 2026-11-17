@@ -155,7 +155,8 @@ class PanelCapas extends StatelessWidget {
                 planos > 0 ? 'Administrar planos' : 'Importar un plano',
               ),
               subtitle: Text(
-                'PDF de topografia encima del mapa',
+                'PDF de topografia o cartografico (vias, planchas) encima '
+                'del mapa',
                 style: TextStyle(color: colores.outline),
               ),
               trailing: const Icon(Icons.chevron_right),

@@ -122,7 +122,36 @@ class MapasRepository {
     );
   }
 
-  /// Saca la capa del telefono: la fila y el archivo.
+  /// Si el plano tiene las dos copias -con la hoja y sin ella- y por lo tanto
+  /// se puede elegir cual ver. Un plano sin papel que quitar tiene una sola.
+  static bool sePuedeQuitarElFondo(String? ruta) =>
+      ruta != null &&
+      File(ArchivosPlano.conFondo(ruta)).existsSync() &&
+      File(ArchivosPlano.sinFondo(ruta)).existsSync();
+
+  /// Cambia entre ver solo las lineas del plano o la hoja entera.
+  ///
+  /// No dibuja nada de nuevo: las dos copias se hicieron al importar, y esto
+  /// solo cambia cual de las dos se pone encima del mapa. Si la copia pedida
+  /// no esta, se queda como estaba en vez de dejar la capa sin imagen.
+  Future<void> cambiarFondo(String codigo, {required bool quitar}) async {
+    final fila = await (_db.select(
+      _db.mapas,
+    )..where((m) => m.codigo.equals(codigo))).getSingleOrNull();
+    final actual = fila?.rutaLocal;
+    if (actual == null) return;
+
+    final nueva = quitar
+        ? ArchivosPlano.sinFondo(actual)
+        : ArchivosPlano.conFondo(actual);
+    if (nueva == actual || !File(nueva).existsSync()) return;
+
+    await (_db.update(_db.mapas)..where((m) => m.codigo.equals(codigo))).write(
+      MapasCompanion(rutaLocal: Value(nueva)),
+    );
+  }
+
+  /// Saca la capa del telefono: la fila y sus archivos.
   ///
   /// Aca si se borra de verdad, al reves que un proyecto: un plano importado no
   /// tiene trabajo de campo colgando, y el original sigue siendo un PDF que
@@ -136,10 +165,16 @@ class MapasRepository {
 
     final ruta = fila.rutaLocal;
     if (ruta != null) {
-      final archivo = File(ruta);
-      // Que el archivo ya no este no puede impedir borrar la fila: quedaria
-      // una capa fantasma imposible de sacar de la lista.
-      if (archivo.existsSync()) {
+      // Las dos copias: borrar solo la que esta puesta dejaria la otra
+      // ocupando lugar para siempre, sin ninguna fila que la recuerde.
+      for (final copia in {
+        ArchivosPlano.conFondo(ruta),
+        ArchivosPlano.sinFondo(ruta),
+      }) {
+        final archivo = File(copia);
+        // Que el archivo ya no este no puede impedir borrar la fila: quedaria
+        // una capa fantasma imposible de sacar de la lista.
+        if (!archivo.existsSync()) continue;
         try {
           await archivo.delete();
         } on FileSystemException {

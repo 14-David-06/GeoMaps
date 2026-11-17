@@ -44,6 +44,16 @@ class CapaPdf extends StatelessWidget {
             // lindero se ven dentadas justo cuando se las esta mirando de
             // cerca; `medium` las deja limpias sin el costo de `high`.
             filterQuality: FilterQuality.medium,
+            // Sin filtro en la **transformacion**, que no es lo mismo que el
+            // de arriba. Con filtro, Flutter dibuja la imagen en una capa
+            // aparte y recien despues la gira; esa capa se recorta a lo que
+            // entra en la pantalla *antes* de girar, asi que en un plano de
+            // hoja acostada -girado 90 grados- lo que se guarda es otro
+            // pedazo de la imagen y al acercarse el plano desaparece. Visto
+            // en el telefono con un PDF de pagina girada. Sin filtro el giro
+            // se aplica al dibujar, y la imagen igual se suaviza con el
+            // filtro de arriba.
+            transformFilterQuality: null,
           ),
       ],
     );
