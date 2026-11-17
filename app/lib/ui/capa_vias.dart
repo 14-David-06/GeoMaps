@@ -194,9 +194,11 @@ class _Renglon extends StatelessWidget {
               : Container(color: color),
         ),
         const SizedBox(width: 8),
-        Text(
-          texto,
-          style: const TextStyle(color: Colors.white, fontSize: 11.5),
+        Flexible(
+          child: Text(
+            texto,
+            style: const TextStyle(color: Colors.white, fontSize: 15),
+          ),
         ),
       ],
     );

@@ -127,6 +127,34 @@ async def guardar(
     return r.json()
 
 
+async def upsert_lote(
+    settings: Settings,
+    tabla: str,
+    campo_codigo: str,
+    filas: list[dict[str, Any]],
+) -> None:
+    """Crea o actualiza varias filas por su codigo, de a diez por llamada.
+
+    Es el upsert propio de Airtable (`performUpsert`): el mismo resultado que
+    `upsert`, sin la busqueda previa por cada fila. Sirve cuando las filas son
+    de quien las manda y no hay nada que revisar antes de pisarlas; la
+    sincronizacion de trazados no lo usa justamente porque tiene que mirar de
+    quien es cada uno.
+    """
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        for i in range(0, len(filas), 10):
+            r = await client.patch(
+                _url(settings, tabla),
+                headers=_cabeceras(settings),
+                json={
+                    "performUpsert": {"fieldsToMergeOn": [campo_codigo]},
+                    "records": [{"fields": f} for f in filas[i : i + 10]],
+                    "typecast": True,
+                },
+            )
+            _revisar(r, tabla)
+
+
 async def listar(settings: Settings, tabla: str, formula: str) -> list[dict[str, Any]]:
     """Todas las filas que cumplen la formula, recorriendo las paginas.
 
@@ -159,6 +187,30 @@ async def borrar(settings: Settings, tabla: str, record_ids: list[str]) -> None:
                 params=[("records[]", rid) for rid in record_ids[i : i + 10]],
             )
             _revisar(r, tabla)
+
+
+def falta_esquema(exc: HTTPException) -> bool:
+    """Si el error de Airtable es de esquema y no de red.
+
+    Una tabla que no existe responde 403 `INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND`
+    -el mismo error que no tener permiso, Airtable no los distingue- y un campo
+    que falta, `UNKNOWN_FIELD_NAME` al escribir o "Unknown field names" al
+    filtrar.
+
+    Sirve a quien puede seguir sin esa tabla: una que todavia no se creo no
+    puede dejar parado lo que no depende de ella.
+    """
+    detalle = str(exc.detail)
+    return any(
+        marca in detalle
+        for marca in (
+            "no existe en la base",
+            "MODEL_NOT_FOUND",
+            "TABLE_NOT_FOUND",
+            "UNKNOWN_FIELD_NAME",
+            "Unknown field name",
+        )
+    )
 
 
 def _revisar(r: httpx.Response, tabla: str) -> None:

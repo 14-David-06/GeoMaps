@@ -82,8 +82,8 @@ class _CapaParcelasState extends State<CapaParcelas> {
           label: conCodigo ? p.rotulo : null,
           labelStyle: const TextStyle(
             color: Colors.white,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
             shadows: [
               // La sombra no es decoracion: un rotulo blanco sobre palma
               // clara al mediodia no se lee sin ella.
@@ -129,8 +129,10 @@ class RotulosBloque extends StatelessWidget {
         for (final b in parcelas.bloques)
           Marker(
             point: b.centro,
-            width: 62,
-            height: 22,
+            // Con holgura para la letra del telefono agrandada: el rotulo
+            // se centra adentro y lo que sobra no se ve.
+            width: 96,
+            height: 34,
             child: _RotuloBloque(nombre: b.nombre),
           ),
       ],
@@ -149,14 +151,16 @@ class _RotuloBloque extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.55),
+          color: Colors.black.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
           nombre,
+          maxLines: 1,
+          softWrap: false,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 12,
+            fontSize: 15,
             fontWeight: FontWeight.w700,
           ),
         ),

@@ -16,6 +16,7 @@ import 'mapa_guaicaramo.dart';
 import 'mapa_page.dart';
 import 'proyectos_page.dart';
 import 'sincronizacion_page.dart';
+import 'theme.dart';
 
 /// La primera pantalla despues de entrar.
 ///
@@ -309,7 +310,7 @@ class _Estado extends ConsumerWidget {
           ? _Chip(
               icono: Icons.gps_not_fixed,
               texto: 'GPS: ${Ubicacion.hace(p)}',
-              color: Colors.orange.shade800,
+              color: ColoresEstado.aviso,
             )
           : _Chip(
               icono: Icons.gps_fixed,
@@ -317,18 +318,18 @@ class _Estado extends ConsumerWidget {
               // El umbral no es cosmetico: por encima de 10 m el punto no sirve para
               // marcar un vertice de lindero.
               color: p.accuracy <= 10
-                  ? Colors.green.shade700
-                  : Colors.orange.shade800,
+                  ? ColoresEstado.bien
+                  : ColoresEstado.aviso,
             ),
       loading: () => _Chip(
         icono: Icons.gps_not_fixed,
         texto: 'Buscando GPS',
-        color: Colors.orange.shade800,
+        color: ColoresEstado.aviso,
       ),
       error: (e, _) => _Chip(
         icono: Icons.gps_off,
         texto: 'GPS sin senal',
-        color: Colors.red.shade700,
+        color: ColoresEstado.mal,
       ),
     );
 
@@ -336,12 +337,12 @@ class _Estado extends ConsumerWidget {
       data: (r) => _Chip(
         icono: r.hayRed ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
         texto: r.etiqueta,
-        color: r.hayRed ? Colors.green.shade700 : Colors.grey.shade700,
+        color: r.hayRed ? ColoresEstado.bien : ColoresEstado.neutro,
       ),
       orElse: () => _Chip(
         icono: Icons.cloud_queue,
         texto: 'Revisando',
-        color: Colors.grey.shade700,
+        color: ColoresEstado.neutro,
       ),
     );
 
@@ -351,7 +352,7 @@ class _Estado extends ConsumerWidget {
       texto: dias == 1 ? '1 dia' : '$dias dias',
       // Por debajo de una semana hay que avisar, antes de que alguien salga a
       // una semana de campo creyendo que tiene mes.
-      color: dias <= 7 ? Colors.orange.shade800 : Colors.grey.shade700,
+      color: dias <= 7 ? ColoresEstado.aviso : ColoresEstado.neutro,
     );
 
     return Wrap(
@@ -381,14 +382,18 @@ class _Chip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icono, size: 16, color: Colors.white),
+          Icon(icono, size: 20, color: Colors.white),
           const SizedBox(width: 6),
-          Text(
-            texto,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
+          // Flexible: un aviso largo ("GPS: hace 12 minutos") con la letra
+          // agrandada baja de renglon en vez de salirse de la pantalla.
+          Flexible(
+            child: Text(
+              texto,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
             ),
           ),
         ],
@@ -413,59 +418,93 @@ class _Accesos extends ConsumerWidget {
     final plantacion = sesion?.tiene(Perfil.plantacion) ?? true;
     final camiones = sesion?.tiene(Perfil.camiones) ?? false;
 
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      // Un poco mas altas que anchas: entran el icono grande, el titulo y el
-      // renglon de detalle sin apretar nada.
-      childAspectRatio: 0.95,
-      children: [
-        _Tarjeta(
-          icono: Icons.map,
-          titulo: 'Mapa',
-          detalle: 'Ver donde estoy',
-          destacada: true,
-          alTocar: () => _ir(context, const MapaPage()),
+    return LayoutBuilder(
+      builder: (context, medidas) => GridView(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: _separacion,
+          crossAxisSpacing: _separacion,
+          mainAxisExtent: _altoTarjeta(context, medidas.maxWidth),
         ),
-        if (camiones)
-          _Tarjeta(
-            icono: Icons.local_shipping_outlined,
-            titulo: 'Camiones',
-            detalle: 'Herramientas de transporte',
-            alTocar: () => _ir(context, const CamionesPage()),
-          ),
-        if (plantacion)
-          _Tarjeta(
-            icono: Icons.folder_outlined,
-            titulo: 'Proyectos',
-            detalle: cuantos.maybeWhen(
-              data: (n) => n == 1 ? '1 proyecto' : '$n proyectos',
-              orElse: () => 'Abrir',
-            ),
-            alTocar: () => _ir(context, const ProyectosPage()),
-          ),
-        if (plantacion)
-          _Tarjeta(
-            icono: Icons.download_outlined,
-            titulo: 'Descargas',
-            detalle: 'Mapas sin senal',
-            alTocar: () => _ir(context, const DescargarRegionPage()),
-          ),
-        _Tarjeta(
-          icono: Icons.sync,
-          titulo: 'Sincronizar',
-          detalle: switch (ref.watch(pendientesProvider).valueOrNull ?? 0) {
-            0 => 'Todo arriba',
-            1 => '1 pendiente',
-            final n => '$n pendientes',
-          },
-          alTocar: () => _ir(context, const SincronizacionPage()),
-        ),
-      ],
+        children: _tarjetas(context, ref, cuantos, plantacion, camiones),
+      ),
     );
+  }
+
+  static const _separacion = 12.0;
+
+  /// El alto de cada tarjeta.
+  ///
+  /// Un poco mas altas que anchas, como siempre. Pero el alto no puede salir
+  /// solo del ancho: con la letra del telefono agrandada el titulo y el
+  /// detalle crecen y el ancho no, y la tarjeta se quedaba corta. Asi que
+  /// nunca es menos que lo que ocupa lo que lleva adentro.
+  static double _altoTarjeta(BuildContext context, double anchoGrilla) {
+    final letra = MediaQuery.textScalerOf(context);
+    final ancho = (anchoGrilla - _separacion) / 2;
+    final contenido =
+        _Tarjeta.relleno * 2 +
+        _Tarjeta.ladoIcono +
+        12 +
+        letra.scale(_Tarjeta.letraTitulo) * 1.35 +
+        2 +
+        letra.scale(_Tarjeta.letraDetalle) * 1.4 * 2;
+    final proporcion = ancho / 0.95;
+    return contenido > proporcion ? contenido : proporcion;
+  }
+
+  List<Widget> _tarjetas(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<int> cuantos,
+    bool plantacion,
+    bool camiones,
+  ) {
+    return [
+      _Tarjeta(
+        icono: Icons.map,
+        titulo: 'Mapa',
+        detalle: 'Ver donde estoy',
+        destacada: true,
+        alTocar: () => _ir(context, const MapaPage()),
+      ),
+      if (camiones)
+        _Tarjeta(
+          icono: Icons.local_shipping_outlined,
+          titulo: 'Camiones',
+          detalle: 'Herramientas de transporte',
+          alTocar: () => _ir(context, const CamionesPage()),
+        ),
+      if (plantacion)
+        _Tarjeta(
+          icono: Icons.folder_outlined,
+          titulo: 'Proyectos',
+          detalle: cuantos.maybeWhen(
+            data: (n) => n == 1 ? '1 proyecto' : '$n proyectos',
+            orElse: () => 'Abrir',
+          ),
+          alTocar: () => _ir(context, const ProyectosPage()),
+        ),
+      if (plantacion)
+        _Tarjeta(
+          icono: Icons.download_outlined,
+          titulo: 'Descargas',
+          detalle: 'Mapas sin senal',
+          alTocar: () => _ir(context, const DescargarRegionPage()),
+        ),
+      _Tarjeta(
+        icono: Icons.sync,
+        titulo: 'Sincronizar',
+        detalle: switch (ref.watch(pendientesProvider).valueOrNull ?? 0) {
+          0 => 'Todo arriba',
+          1 => '1 pendiente',
+          final n => '$n pendientes',
+        },
+        alTocar: () => _ir(context, const SincronizacionPage()),
+      ),
+    ];
   }
 
   void _ir(BuildContext context, Widget pagina) {
@@ -492,6 +531,12 @@ class _Tarjeta extends StatelessWidget {
   /// pierde entre las otras tres.
   final bool destacada;
 
+  // Las medidas de la tarjeta, que tambien usa la grilla para darle el alto.
+  static const relleno = 18.0;
+  static const ladoIcono = 36.0;
+  static const letraTitulo = 20.0;
+  static const letraDetalle = 15.0;
+
   @override
   Widget build(BuildContext context) {
     final colores = Theme.of(context).colorScheme;
@@ -507,31 +552,42 @@ class _Tarjeta extends StatelessWidget {
       child: InkWell(
         onTap: alTocar,
         child: Padding(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(relleno),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(icono, size: 34, color: tinta),
+              Icon(icono, size: ladoIcono, color: tinta),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    titulo,
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: tinta,
+                  // El titulo es una sola palabra: si con la letra agrandada
+                  // no entra, se achica hasta entrar en vez de partirse en
+                  // "Sincroniza" y "r".
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      titulo,
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: letraTitulo,
+                        fontWeight: FontWeight.w700,
+                        color: tinta,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 2),
+                  // Dos renglones: "Herramientas de transporte" no entra en
+                  // uno y cortado con puntos no dice nada.
                   Text(
                     detalle,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 13,
-                      color: tinta.withValues(alpha: 0.75),
+                      fontSize: letraDetalle,
+                      height: 1.25,
+                      color: tinta,
                     ),
                   ),
                 ],

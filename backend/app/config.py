@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # El seguimiento de las vueltas de camiones. Si la tabla no existe, las
     # vueltas se toman igual pero sin control: ver services/viajes.py.
     airtable_tabla_vueltas: str = "Vueltas"
+    # Los fallos que la app anota en el telefono. Si la tabla no existe, la
+    # subida responde 500 y la app los guarda hasta que exista: ver
+    # services/errores_app.py y scripts/crear_tabla_errores.py.
+    airtable_tabla_errores: str = "Errores"
 
     # --- Identidad: Google + Airtable ------------------------------------
     # Registro abierto con cuenta de Google. No hay proveedor de identidad de

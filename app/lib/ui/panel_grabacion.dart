@@ -141,6 +141,10 @@ class PanelGrabacion extends ConsumerWidget {
     if (g.codigo == null) return const SizedBox.shrink();
     final colores = Theme.of(context).colorScheme;
     final precision = g.precisionUltimaM;
+    final terminar = TextButton(
+      onPressed: () => terminarRecorrido(context, ref),
+      child: const Text('Terminar'),
+    );
 
     return Material(
       color: colores.surface,
@@ -148,55 +152,71 @@ class PanelGrabacion extends ConsumerWidget {
       borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              g.abiertaSinGrabar
-                  ? Icons.pause_circle_outline
-                  : Icons.fiber_manual_record,
-              color: g.abiertaSinGrabar ? colores.outline : Colors.red,
-              size: g.abiertaSinGrabar ? 22 : 16,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    g.nombre ?? 'Recorrido',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+            Row(
+              children: [
+                Icon(
+                  g.abiertaSinGrabar
+                      ? Icons.pause_circle_outline
+                      : Icons.fiber_manual_record,
+                  color: g.abiertaSinGrabar
+                      ? colores.onSurfaceVariant
+                      : Colors.red,
+                  size: g.abiertaSinGrabar ? 24 : 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        g.nombre ?? 'Recorrido',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        g.abiertaSinGrabar
+                            ? 'Sin terminar · ${formatearDistancia(g.metros)}'
+                            : 'Grabando · ${formatearDistancia(g.metros)}'
+                                  '${precision == null ? '' : ' · GPS +/- ${precision.round()} m'}',
+                        style: TextStyle(
+                          fontSize: 15,
+                          // Con mas error que el tope del grabador, los puntos
+                          // no estan entrando: se dice en rojo, no se calla.
+                          color:
+                              precision != null &&
+                                  precision > Grabador.precisionMaximaM
+                              ? colores.error
+                              : colores.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
-                  Text(
-                    g.abiertaSinGrabar
-                        ? 'Sin terminar · ${formatearDistancia(g.metros)}'
-                        : 'Grabando · ${formatearDistancia(g.metros)}'
-                              '${precision == null ? '' : ' · GPS +/- ${precision.round()} m'}',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      // Con mas error que el tope del grabador, los puntos no
-                      // estan entrando: se dice en rojo, no se calla.
-                      color:
-                          precision != null &&
-                              precision > Grabador.precisionMaximaM
-                          ? colores.error
-                          : colores.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                // Grabando hay un solo boton y entra al lado del texto.
+                if (!g.abiertaSinGrabar) terminar,
+              ],
             ),
+            // Sin terminar son dos, y con la letra agrandada no entran al
+            // lado: van en su propio renglon, a la derecha.
             if (g.abiertaSinGrabar)
-              TextButton(
-                onPressed: () => ref.read(grabadorProvider.notifier).reanudar(),
-                child: const Text('Seguir'),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Wrap(
+                  children: [
+                    TextButton(
+                      onPressed: () =>
+                          ref.read(grabadorProvider.notifier).reanudar(),
+                      child: const Text('Seguir'),
+                    ),
+                    terminar,
+                  ],
+                ),
               ),
-            TextButton(
-              onPressed: () => terminarRecorrido(context, ref),
-              child: const Text('Terminar'),
-            ),
           ],
         ),
       ),

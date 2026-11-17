@@ -162,7 +162,7 @@ class _DialogoPuntoState extends State<_DialogoPunto> {
                         'no para volver al mismo sitio exacto.'
                   : 'GPS +/- ${precision.round()} m',
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 15,
                 color: mala ? colores.error : colores.onSurfaceVariant,
               ),
             ),
@@ -366,7 +366,7 @@ class FichaPunto extends StatelessWidget {
                               : 'GPS +/- ${w.precisionM!.round()} m',
                         ].join(' · '),
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 15,
                           color: colores.onSurfaceVariant,
                         ),
                       ),
@@ -384,22 +384,31 @@ class FichaPunto extends StatelessWidget {
               const SizedBox(height: 4),
               Text(w.nota!, maxLines: 3, overflow: TextOverflow.ellipsis),
             ],
-            Row(
-              children: [
-                TextButton.icon(
-                  onPressed: onBorrar,
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  label: const Text('Borrar'),
+            // Un Wrap y no una fila: con la letra agrandada los dos botones no
+            // entran lado a lado, y el segundo baja en vez de salirse.
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  children: [
+                    TextButton.icon(
+                      onPressed: onBorrar,
+                      icon: const Icon(Icons.delete_outline, size: 20),
+                      label: const Text('Borrar'),
+                    ),
+                    if (onIr != null)
+                      FilledButton.icon(
+                        onPressed: onIr,
+                        icon: const Icon(Icons.directions, size: 20),
+                        label: const Text('Como llegar'),
+                      ),
+                  ],
                 ),
-                const Spacer(),
-                if (onIr != null)
-                  FilledButton.icon(
-                    onPressed: onIr,
-                    icon: const Icon(Icons.directions, size: 18),
-                    label: const Text('Como llegar'),
-                  ),
-                const SizedBox(width: 8),
-              ],
+              ),
             ),
           ],
         ),

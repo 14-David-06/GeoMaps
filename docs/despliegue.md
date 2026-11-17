@@ -88,12 +88,17 @@ para la app.
 ```bash
 cd app
 flutter build apk --release \
+  --target-platform android-arm,android-arm64 \
   --dart-define=API_BASE=https://geomaps-api.vercel.app \
   --dart-define=API_KEY=...
 ```
 
 Las llaves entran por `--dart-define`, nunca por un archivo commiteado: un APK
 anda en el bolsillo de alguien y cualquier cadena adentro es publica.
+
+`--target-platform` deja afuera x86_64, la arquitectura de los emuladores: son
+28 MB que ningun telefono usa y que cada actualizacion bajaria por senal rural.
+`tools/publicar_apk.py` ya compila asi.
 
 Para distribuir sin Play Store, que es lo que corresponde a una app interna, el
 APK se sube a un enlace privado. Los telefonos necesitan permitir instalacion

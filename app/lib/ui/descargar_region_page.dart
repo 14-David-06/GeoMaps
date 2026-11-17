@@ -10,6 +10,7 @@ import '../state/red.dart';
 import '../state/zona_guaicaramo.dart';
 import 'mapa_page.dart' show CapaBase;
 import 'proveedor_teselas.dart';
+import 'theme.dart';
 
 /// Bajar una zona del satelite para usarla sin senal.
 ///
@@ -164,7 +165,7 @@ class _DescargarRegionPageState extends ConsumerState<DescargarRegionPage> {
                             child: Text(
                               'Mueve y acerca el mapa: lo que se ve aca es lo '
                               'que se baja.',
-                              style: TextStyle(fontSize: 13),
+                              style: TextStyle(fontSize: 15),
                             ),
                           ),
                           if (predio != null)
@@ -229,12 +230,12 @@ class _DescargarRegionPageState extends ConsumerState<DescargarRegionPage> {
                       'Es demasiado para bajar de una vez (el tope son '
                       '${Descargador.maximoTeselas} imagenes). Acerca el mapa '
                       'o baja el detalle.',
-                      style: TextStyle(color: colores.error, fontSize: 13),
+                      style: TextStyle(color: colores.error, fontSize: 15),
                     )
                   else if (!hayRed)
                     Text(
                       'Sin conexion: bajar la zona necesita senal o wifi.',
-                      style: TextStyle(color: colores.error, fontSize: 13),
+                      style: TextStyle(color: colores.error, fontSize: 15),
                     ),
                   const SizedBox(height: 10),
                   if (descarga.corriendo) ...[
@@ -269,7 +270,7 @@ class _DescargarRegionPageState extends ConsumerState<DescargarRegionPage> {
                                   : Icons.info_outline,
                               size: 18,
                               color: descarga.completa
-                                  ? Colors.green.shade700
+                                  ? ColoresEstado.bien
                                   : colores.onSurfaceVariant,
                             ),
                             const SizedBox(width: 8),
@@ -277,7 +278,7 @@ class _DescargarRegionPageState extends ConsumerState<DescargarRegionPage> {
                               child: Text(
                                 '${descarga.aviso}'
                                 '${descarga.bajadas == 0 ? '' : ' (${(descarga.bytes / 1048576).toStringAsFixed(1).replaceAll('.', ',')} MB nuevos)'}',
-                                style: const TextStyle(fontSize: 13),
+                                style: const TextStyle(fontSize: 15),
                               ),
                             ),
                           ],

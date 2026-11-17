@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -150,6 +151,12 @@ class SesionNotifier extends StateNotifier<EstadoSesion> {
   SesionNotifier(this._api) : super(const EstadoSesion(cargando: true)) {
     _restaurar();
   }
+
+  /// Con alguien ya adentro y sin leer el almacen seguro, que en una prueba
+  /// no existe: es como se arma una pantalla que necesita una sesion.
+  @visibleForTesting
+  SesionNotifier.conSesion(this._api, Sesion sesion)
+    : super(EstadoSesion(sesion: sesion));
 
   final ApiClient _api;
 

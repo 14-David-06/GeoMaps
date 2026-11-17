@@ -50,6 +50,11 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 APP = RAIZ / "app"
+
+# Solo las dos arquitecturas de telefonos de verdad. Sin esto Flutter mete
+# tambien x86_64, que es la de los emuladores: 28 MB de los 80 del APK que no
+# le sirven a nadie y que cada actualizacion baja por senal rural.
+PLATAFORMAS = ("--target-platform", "android-arm,android-arm64")
 APK = APP / "build" / "app" / "outputs" / "flutter-apk" / "app-release.apk"
 LLAVE_MANIFIESTO = "app/version.json"
 
@@ -94,6 +99,7 @@ def compilar() -> None:
             "build",
             "apk",
             "--release",
+            *PLATAFORMAS,
             f"--dart-define-from-file={defines.name}",
         ],
         cwd=APP,

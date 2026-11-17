@@ -16,7 +16,7 @@ from html import escape
 
 from .config import Settings
 
-ACTUALIZADA = "19 de octubre de 2026"
+ACTUALIZADA = "17 de noviembre de 2026"
 
 _ESTILO = """
 :root { color-scheme: light dark; --fondo: #fff; --texto: #1d1d1f;
@@ -94,6 +94,10 @@ daña.</td></tr>
 (SiriusFleet) cuando confirmas una vuelta.</td></tr>
 <tr><td>Versión de la app</td>
 <td>Avisar cuando hay que actualizar.</td></tr>
+<tr><td>Informes de error de la app: el mensaje técnico del fallo, la versión
+de la app, y la marca, el modelo y la versión de Android del teléfono</td>
+<td>Encontrar y corregir fallos. Se guardan con tu cuenta en nuestra base de
+datos; no pasan por servicios de terceros.</td></tr>
 </table>
 
 <p>La app <strong>no</strong> recoge contactos, fotos, archivos, mensajes,
@@ -134,7 +138,8 @@ ver lo suyo.</p>
 
 <h2>Cuánto tiempo se guardan</h2>
 <p>Mientras tu cuenta exista. Si la eliminas, borramos tu cuenta, tus
-recorridos y tus proyectos de inmediato; las copias de respaldo del
+recorridos, tus proyectos y tus informes de error de inmediato; las copias de
+respaldo del
 almacenamiento se purgan en un máximo de 30 días. Los viajes de camión que
 confirmaste quedan en la planilla operativa de SiriusFleet, porque son
 registros de la operación de la empresa, pero ya no quedan ligados a tu
@@ -187,7 +192,8 @@ de 10 días hábiles y te confirmamos por correo.</p>
 <li>Tu cuenta: nombre, correo, foto, contraseña y número de cédula.</li>
 <li>Tus recorridos, polígonos y proyectos, en la base de datos y en el
 almacenamiento de archivos.</li>
-<li>El historial de sincronizaciones de tu cuenta.</li>
+<li>El historial de sincronizaciones y los informes de error de tu
+cuenta.</li>
 <li>Lo guardado en el teléfono, si la eliminas desde la app.</li>
 </ul>
 <p>Las copias de respaldo del almacenamiento se purgan en un máximo de 30

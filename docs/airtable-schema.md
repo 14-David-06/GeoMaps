@@ -39,6 +39,7 @@ USUARIO -> PROYECTO -> MAPA (capa base offline)
 | `Archivos` | Todo lo que la app genera: KML, GPX, PDF, fotos |
 | `Sincronizaciones` | Log de cada subida, para poder explicar un dato perdido |
 | `Vueltas` | Seguimiento de las vueltas de camiones: quien tomo cada una, cuando llego a los vagones, cuando volvio y cuando la finalizo |
+| `Errores` | Los fallos que la app anota en el telefono, con la version del APK y el modelo del telefono |
 
 ---
 
@@ -352,6 +353,40 @@ seguimiento.dart`), que es el que tiene el GPS. El backend guarda lo que le
 reportan y cuida el orden: no acepta un "finalizada" de una vuelta que nunca
 llego a los vagones.
 
+### `Errores`
+
+Los fallos que la app anota en el telefono. **Una fila es un error**, no una
+vez que ocurrio: si se repite mientras espera subir, viaja una sola vez con
+`Veces`. Una pantalla que falla al dibujarse falla en cada cuadro.
+
+Se crea con `python backend/scripts/crear_tabla_errores.py --aplicar` (sin
+`--aplicar` solo dice que haria). **Si la tabla no existe la app no pierde
+nada**: guarda hasta cuarenta informes en el telefono y los reintenta cada vez
+que engancha senal.
+
+| Campo | Tipo | Nota |
+|---|---|---|
+| `Codigo error` | Single line text | UUID que genera el telefono. Campo primario; el upsert es por aca |
+| `Mensaje` | Long text | El error, como lo dio Dart |
+| `Veces` | Number (entero) | Cuantas veces se repitio antes de subir |
+| `Ocurrio en` | Date with time | La primera vez, con la hora del telefono |
+| `Version` | Single line text | `0.2.7+11`: nombre y versionCode del APK |
+| `Sistema` | Single line text | `OPPO CPH2637 · Android 14` |
+| `Persona` | Single line text | El nombre de la cuenta, o el correo si no tiene |
+| `Donde` | Single line text | En que parte de la app salto, cuando Flutter lo sabe |
+| `Traza` | Long text | Hasta 8.000 caracteres |
+| `Recibido en` | Date with time | Cuando llego al backend: la diferencia con `Ocurrio en` es cuanto estuvo sin senal |
+| `Version code` | Number (entero) | Para filtrar "todo lo anterior a la 11" |
+| `Auth UID` | Single line text | De quien es. Es por donde la baja de cuenta los borra |
+| `Estado` | Single select | `Nuevo` / `Visto` / `Arreglado`. **Lo lleva quien revisa**: el backend no lo escribe |
+
+No lleva enlace a `Usuarios` a proposito: resolverlo costaria una consulta mas
+por tanda, y el cupo de Airtable lo comparte con la sincronizacion.
+
+Lo que **no** se anota: los cortes de red (`SocketException`, tiempos de
+espera) y las imagenes del mapa que no cargaron. Sin senal son miles por
+jornada y no son fallos de la app.
+
 ---
 
 ## Que va en S3 y que en Airtable
@@ -453,8 +488,8 @@ saber de quien eran. No hay que dar de baja nada en Google — la cuenta es de l
 persona, nosotros solo dejamos de reconocer su `sub`.
 
 Lo hace `DELETE /v1/cuenta` (`services/cuenta.py`), que la app llama desde
-"Mi cuenta > Eliminar mi cuenta". Tambien borra sus `Sincronizaciones` y
-`Dispositivos`. Las cuentas `Soporte` y `Admin` no se dan de baja solas: pueden
+"Mi cuenta > Eliminar mi cuenta". Tambien borra sus `Sincronizaciones`,
+sus `Dispositivos` y sus `Errores` (estos por `Auth UID`, no por enlace). Las cuentas `Soporte` y `Admin` no se dan de baja solas: pueden
 ser duenas de proyectos de la empresa, y esas se borran a mano. Quien pide la
 baja por correo (ver `/eliminar-cuenta`) se da de baja a mano siguiendo estos
 mismos pasos.

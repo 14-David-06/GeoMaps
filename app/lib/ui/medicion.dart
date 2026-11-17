@@ -179,7 +179,7 @@ class PanelMedicion extends StatelessWidget {
                       Text(
                         detalle,
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 15,
                           color: colores.onSurfaceVariant,
                         ),
                       ),
@@ -193,22 +193,31 @@ class PanelMedicion extends StatelessWidget {
                 ),
               ],
             ),
-            Row(
-              children: [
-                TextButton.icon(
-                  onPressed: puntos.isEmpty ? null : onDeshacer,
-                  icon: const Icon(Icons.undo, size: 18),
-                  label: const Text('Deshacer'),
+            // Un Wrap y no una fila: con la letra agrandada los dos botones no
+            // entran lado a lado, y el segundo baja en vez de salirse.
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  children: [
+                    TextButton.icon(
+                      onPressed: puntos.isEmpty ? null : onDeshacer,
+                      icon: const Icon(Icons.undo, size: 20),
+                      label: const Text('Deshacer'),
+                    ),
+                    if (m.esArea)
+                      FilledButton.tonalIcon(
+                        onPressed: onGuardar,
+                        icon: const Icon(Icons.save_outlined, size: 20),
+                        label: const Text('Guardar area'),
+                      ),
+                  ],
                 ),
-                const Spacer(),
-                if (m.esArea)
-                  FilledButton.tonalIcon(
-                    onPressed: onGuardar,
-                    icon: const Icon(Icons.save_outlined, size: 18),
-                    label: const Text('Guardar area'),
-                  ),
-                const SizedBox(width: 8),
-              ],
+              ),
             ),
           ],
         ),

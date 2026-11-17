@@ -12,6 +12,7 @@ import 'package:geomaps/data/trazados_repository.dart';
 import 'package:geomaps/state/grabacion.dart';
 import 'package:geomaps/state/providers.dart';
 import 'package:geomaps/state/sesion.dart';
+import 'package:geomaps/ui/theme.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -86,7 +87,7 @@ void main() {
             ),
           ),
         ],
-        child: const MaterialApp(home: VueltasPage()),
+        child: MaterialApp(theme: temaSirius, home: const VueltasPage()),
       ),
     );
     await tester.pumpAndSettle();

@@ -779,7 +779,7 @@ class _FilaAcopio extends StatelessWidget {
                           child: Text(
                             'EL MAS CERCANO',
                             style: TextStyle(
-                              fontSize: 13.5,
+                              fontSize: 15,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 0.4,
                               color: colores.primary,

@@ -495,7 +495,7 @@ class FichaTrazado extends ConsumerWidget {
                       if (t.metodo == MetodoCaptura.manual.name) 'a mano',
                     ].join(' · '),
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 15,
                       color: colores.onSurfaceVariant,
                     ),
                   ),

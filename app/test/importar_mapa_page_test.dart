@@ -9,6 +9,7 @@ import 'package:geomaps/data/db/app_database.dart';
 import 'package:geomaps/data/mapas_repository.dart';
 import 'package:geomaps/state/providers.dart';
 import 'package:geomaps/ui/importar_mapa_page.dart';
+import 'package:geomaps/ui/theme.dart';
 import 'package:latlong2/latlong.dart';
 
 /// La pantalla donde se importa un plano en PDF.
@@ -66,6 +67,7 @@ void main() {
           capasImportadasProvider.overrideWith((ref) => Stream.value(planos)),
         ],
         child: MaterialApp(
+          theme: temaSirius,
           home: Builder(
             builder: (context) => Scaffold(
               body: Center(

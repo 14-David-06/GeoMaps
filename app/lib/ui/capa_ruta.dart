@@ -234,7 +234,7 @@ class PanelRuta extends StatelessWidget {
                       Text(
                         _detalle(),
                         style: TextStyle(
-                          fontSize: 14.5,
+                          fontSize: 16,
                           color: colores.onSurfaceVariant,
                         ),
                       ),
@@ -333,7 +333,7 @@ class PistaRuta extends StatelessWidget {
                   ? 'Toca un acopio o manten pulsado un punto para trazar '
                         'la ruta'
                   : 'Manten pulsado un punto para trazar la ruta',
-              style: const TextStyle(color: Colors.white, fontSize: 12.5),
+              style: const TextStyle(color: Colors.white, fontSize: 15),
             ),
           ),
         ],

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/version_app.dart';
 import '../state/actualizacion.dart';
 import '../state/providers.dart';
+import 'theme.dart';
 
 /// La pantalla que reemplaza a toda la app cuando la version ya no sirve.
 ///
@@ -183,7 +184,7 @@ class AvisoActualizacion extends ConsumerWidget {
       child: Material(
         // Solido y no translucido, como los chips de estado: se lee a pleno
         // sol.
-        color: Colors.orange.shade800,
+        color: ColoresEstado.aviso,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -217,7 +218,7 @@ class AvisoActualizacion extends ConsumerWidget {
                 data: Theme.of(context).copyWith(
                   colorScheme: Theme.of(context).colorScheme.copyWith(
                     primary: Colors.white,
-                    onPrimary: Colors.orange.shade900,
+                    onPrimary: ColoresEstado.aviso,
                     error: Colors.white,
                     onSurfaceVariant: Colors.white,
                   ),

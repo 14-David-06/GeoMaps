@@ -57,6 +57,7 @@ from .schemas_camiones import (
     SoltarResponse,
     VueltasResponse,
 )
+from .schemas_errores import ErroresRequest, ErroresResponse
 from .schemas_sync import SyncRequest, SyncResponse
 from .services import (
     airtable,
@@ -64,6 +65,7 @@ from .services import (
     auth,
     camiones,
     cuenta,
+    errores_app,
     sincronizacion,
     version_app,
 )
@@ -629,6 +631,21 @@ async def sync(
     que vuelva a mandar tambien lo que ya subio.
     """
     return await sincronizacion.sincronizar(get_settings(), identidad, req)
+
+
+@app.post("/v1/errores", response_model=ErroresResponse)
+async def errores(
+    req: ErroresRequest,
+    identidad: auth.Identidad = Depends(auth.identidad_de_request),
+    _: None = Depends(auth.verificar_api_key),
+) -> ErroresResponse:
+    """Recibe los fallos que la app anoto en el telefono. Ver
+    `services/errores_app.py`.
+
+    Pide sesion: sin ella cualquiera con la llave del APK podria llenar la
+    tabla. Un fallo de antes de entrar espera en el telefono y sube despues.
+    """
+    return await errores_app.registrar(get_settings(), identidad, req)
 
 
 @app.get("/v1/camiones/vueltas", response_model=VueltasResponse)

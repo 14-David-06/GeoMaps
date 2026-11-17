@@ -28,7 +28,7 @@ import asyncio
 from fastapi import HTTPException
 
 from ..config import Settings
-from . import airtable, almacenamiento
+from . import airtable, almacenamiento, errores_app
 from .auth import Identidad, formula_del_duenno
 
 ROLES_SIN_BAJA_PROPIA = {"Soporte", "Admin"}
@@ -82,5 +82,14 @@ async def eliminar(settings: Settings, identidad: Identidad) -> None:
         "Dispositivos": settings.airtable_tabla_dispositivos,
     }.items():
         await airtable.borrar(settings, tabla, campos.get(enlace) or [])
+
+    # Los informes de error no cuelgan de la fila por un enlace: llevan el
+    # `Auth UID`. Si la tabla todavia no existe en la base no hay nada que
+    # borrar, y eso no puede frenar la baja.
+    try:
+        await errores_app.borrar_de(settings, identidad.auth_uid)
+    except HTTPException as e:
+        if not airtable.falta_esquema(e):
+            raise
 
     await airtable.borrar(settings, settings.airtable_tabla_usuarios, [usuario["id"]])

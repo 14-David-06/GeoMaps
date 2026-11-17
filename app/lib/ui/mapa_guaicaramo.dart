@@ -65,11 +65,11 @@ class MapaGuaicaramo extends ConsumerWidget {
                     Text(
                       estado.explicacion,
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 15,
                         height: 1.3,
                         color: abierto
-                            ? colores.onPrimaryContainer.withValues(alpha: 0.8)
-                            : colores.outline,
+                            ? colores.onPrimaryContainer
+                            : colores.onSurfaceVariant,
                       ),
                     ),
                   ],

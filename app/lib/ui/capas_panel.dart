@@ -157,7 +157,7 @@ class PanelCapas extends StatelessWidget {
               subtitle: Text(
                 'PDF de topografia o cartografico (vias, planchas) encima '
                 'del mapa',
-                style: TextStyle(color: colores.outline),
+                style: TextStyle(color: colores.onSurfaceVariant),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: onAdministrarPlanos,
@@ -181,7 +181,7 @@ class _Titulo extends StatelessWidget {
       child: Text(
         texto.toUpperCase(),
         style: TextStyle(
-          fontSize: 12,
+          fontSize: 15,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.8,
           color: Theme.of(context).colorScheme.primary,

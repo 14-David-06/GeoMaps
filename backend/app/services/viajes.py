@@ -55,24 +55,9 @@ class SinControl(Exception):
 
 
 def _falta_la_tabla(exc: HTTPException) -> bool:
-    """Si el error de Airtable es de esquema y no de red.
-
-    Una tabla que no existe responde 403 `INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND`
-    -el mismo error que no tener permiso, Airtable no los distingue- y un campo
-    que falta, `UNKNOWN_FIELD_NAME` al escribir o "Unknown field names" al
-    filtrar.
-    """
-    detalle = str(exc.detail)
-    return any(
-        marca in detalle
-        for marca in (
-            "no existe en la base",
-            "MODEL_NOT_FOUND",
-            "TABLE_NOT_FOUND",
-            "UNKNOWN_FIELD_NAME",
-            "Unknown field name",
-        )
-    )
+    """Si el error de Airtable es de esquema y no de red. La regla vive en
+    `airtable.falta_esquema`, que tambien usa la baja de cuenta."""
+    return airtable.falta_esquema(exc)
 
 
 def _tabla(settings: Settings) -> str:

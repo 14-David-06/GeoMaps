@@ -317,7 +317,7 @@ class _Resumen extends StatelessWidget {
               Text(
                 etiqueta,
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: colores.onSurface),
+                style: TextStyle(fontSize: 15, color: colores.onSurface),
               ),
             ],
           ),

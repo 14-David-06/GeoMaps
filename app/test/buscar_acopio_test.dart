@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geomaps/core/acopios.dart';
 import 'package:geomaps/ui/capa_acopios.dart';
+import 'package:geomaps/ui/theme.dart';
 import 'package:latlong2/latlong.dart';
 
 /// Buscar un acopio cuando el numero se repite.
@@ -116,6 +117,7 @@ void main() {
       Acopio? elegido;
       await tester.pumpWidget(
         MaterialApp(
+          theme: temaSirius,
           home: Builder(
             builder: (context) => Scaffold(
               body: FilledButton(
