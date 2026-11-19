@@ -5,8 +5,9 @@ resueltos:
 
     Proyectos -> Mapas -> Trazados -> Waypoints -> Archivos -> Sincronizaciones
 
-Hoy suben los trazados (empezando por las rutas calculadas que se guardan desde
-el mapa); el resto de las tablas se suma en este mismo recorrido.
+Hoy suben los proyectos que se crearon en el telefono, los trazados y los
+puntos marcados. Las fotos de los puntos van aparte (`services/fotos.py`),
+porque no pasan por aca: suben directo al bucket.
 
 Lo que devuelve importa tanto como lo que escribe: por cada UUID enviado, si
 quedo o no y por que. El telefono marca `sincronizado = true` solo los que el
@@ -15,12 +16,17 @@ falto y nada mas.
 
 ## El proyecto `local`
 
-El mapa hoy se abre sin proyecto, y lo que se guarda en el telefono cae en el
+Lo que se levanta sin haber elegido un proyecto cae, en el telefono, en el
 proyecto `local`, que es una cadena fija y la misma en todos los telefonos. En
 Airtable no puede ser una sola fila: mezclaria las rutas de todas las cuentas y
 el prefijo de S3 de todas. Por eso se traduce a un proyecto por cuenta,
 `local-<Auth UID>`, que se crea la primera vez con el dueno puesto. Asi el
 aislamiento sigue colgando de `Dueno Auth UID` como en el resto de la base.
+
+Los proyectos que la persona crea en la app viajan en `proyectos`, con el UUID
+que les puso el telefono, y suben antes que lo que cuelga de ellos. Ese codigo
+tiene que ser un UUID justamente para que nadie pueda mandar un `local-...`
+ajeno (ver `ProyectoSync`).
 """
 
 from __future__ import annotations
@@ -39,6 +45,7 @@ from ..schemas_sync import (
     MOTIVOS_RUTA,
     SIMBOLOS_WAYPOINT,
     TIPOS_TRAZADO,
+    ProyectoSync,
     ResultadoItem,
     SyncRequest,
     SyncResponse,
@@ -77,6 +84,30 @@ async def sincronizar(
         )
 
     proyectos: dict[str, tuple[str, str]] = {}
+
+    # Los proyectos primero: lo que sigue se cuelga de ellos.
+    subidos: list[ResultadoItem] = []
+    for p in req.proyectos:
+        try:
+            proyecto_id = await _subir_proyecto(settings, identidad, usuario["id"], p)
+            proyectos[p.codigo] = (p.codigo, proyecto_id)
+            subidos.append(ResultadoItem(codigo=p.codigo, ok=True))
+        except RechazoItem as exc:
+            subidos.append(ResultadoItem(codigo=p.codigo, ok=False, error=str(exc)))
+        except HTTPException as exc:
+            subidos.append(
+                ResultadoItem(codigo=p.codigo, ok=False, error=str(exc.detail))
+            )
+        except Exception as exc:  # noqa: BLE001 -- red: reintentable.
+            subidos.append(
+                ResultadoItem(
+                    codigo=p.codigo,
+                    ok=False,
+                    error=f"No se pudo guardar el proyecto ({type(exc).__name__}). "
+                    "Se reintenta en la proxima sincronizacion.",
+                )
+            )
+
     resultados: list[ResultadoItem] = []
     for t in req.trazados:
         await _cerrar_vuelta(settings, identidad, t)
@@ -134,8 +165,57 @@ async def sincronizar(
                 )
             )
 
-    await _anotar(settings, usuario["id"], inicio, resultados + puntos)
-    return SyncResponse(trazados=resultados, waypoints=puntos)
+    await _anotar(settings, usuario["id"], inicio, subidos + resultados + puntos)
+    return SyncResponse(trazados=resultados, waypoints=puntos, proyectos=subidos)
+
+
+async def _subir_proyecto(
+    settings: Settings, identidad: Identidad, usuario_id: str, p: ProyectoSync
+) -> str:
+    """Crea o actualiza un proyecto del telefono. Devuelve su record id.
+
+    El codigo es un UUID que genero el telefono, asi que no se le cree que sea
+    suyo: si ya existe con otro dueno, se rechaza. Sin eso, quien conozca el
+    codigo de un proyecto ajeno se lo queda con solo subirlo.
+    """
+    tabla = settings.airtable_tabla_proyectos
+    existente = await airtable.buscar_uno(
+        settings, tabla, airtable.formula_codigo("Codigo proyecto", p.codigo)
+    )
+    if existente and (
+        existente.get("fields", {}).get("Dueno Auth UID") != identidad.auth_uid
+    ):
+        raise RechazoItem("Ese codigo de proyecto ya esta usado por otro registro.")
+
+    campos: dict[str, Any] = {
+        "Codigo proyecto": p.codigo,
+        "Nombre": p.nombre.strip(),
+        "Estado": "Activo" if p.activo else "Cerrado",
+        "Dueno Auth UID": identidad.auth_uid,
+        "Dueno": [usuario_id],
+    }
+    opcionales = {
+        "Cliente": (p.cliente or "").strip() or None,
+        "Municipio": (p.municipio or "").strip() or None,
+    }
+    campos.update({k: v for k, v in opcionales.items() if v is not None})
+
+    fila = await airtable.guardar(
+        settings, tabla, campos, existente["id"] if existente else None
+    )
+    return fila["id"]
+
+
+async def proyecto_de(
+    settings: Settings, identidad: Identidad, usuario_id: str, codigo: str
+) -> tuple[str, str]:
+    """Lo mismo que `_proyecto`, para quien no sube una tanda sino un solo
+    registro (las fotos): si el proyecto no es de quien pide, es un 409 y no
+    un item rechazado."""
+    try:
+        return await _proyecto(settings, identidad, usuario_id, codigo)
+    except RechazoItem as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
 
 
 async def _proyecto(

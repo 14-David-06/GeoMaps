@@ -89,6 +89,11 @@ plano.</td></tr>
 <tr><td>Recorridos y polígonos que guardas</td>
 <td>Sincronizarlos con tu cuenta para que no se pierdan si el teléfono se
 daña.</td></tr>
+<tr><td>Fotos que tomas de un punto marcado</td>
+<td>Guardarlas con el punto y sincronizarlas con tu cuenta. Son solo las que
+tú tomas desde la app con el botón de foto: la app no lee tu galería ni las
+demás fotos del teléfono, y no guarda la ubicación ni los datos de la cámara
+dentro de la imagen.</td></tr>
 <tr><td>Número de cédula (solo módulo de camiones)</td>
 <td>Identificarte como conductor en la planilla de viajes de Sirius
 (SiriusFleet) cuando confirmas una vuelta.</td></tr>
@@ -100,13 +105,16 @@ de la app, y la marca, el modelo y la versión de Android del teléfono</td>
 datos; no pasan por servicios de terceros.</td></tr>
 </table>
 
-<p>La app <strong>no</strong> recoge contactos, fotos, archivos, mensajes,
-audio, datos de salud o financieros, ni identificadores de publicidad. No
+<p>La app <strong>no</strong> recoge contactos, archivos, mensajes, audio,
+datos de salud o financieros, ni identificadores de publicidad; tampoco las
+fotos de tu galería. No
 muestra anuncios ni usa servicios de analítica o de reporte de fallos de
 terceros.</p>
 
-<p>La cámara se usa únicamente para leer el código QR de las vueltas
-pendientes; la imagen no se guarda ni se envía.</p>
+<p>La cámara se usa para dos cosas: leer el código QR de las vueltas
+pendientes —esa imagen no se guarda ni se envía— y tomar las fotos que tú
+decidas agregar a un punto. Las indicaciones habladas las dice el propio
+teléfono: nada de lo que la app dice sale del dispositivo.</p>
 
 <h2>Dónde se guardan</h2>
 <p>Lo que haces sin señal se guarda primero en tu teléfono y se sube cuando
@@ -116,7 +124,8 @@ que los procesan por cuenta de Sirius:</p>
 <li><strong>Vercel</strong>: el servidor de la app.</li>
 <li><strong>Airtable</strong>: la base de datos de cuentas y recorridos.</li>
 <li><strong>Amazon Web Services (S3)</strong>, en Estados Unidos: la geometría
-completa de los recorridos, en un almacenamiento privado y cifrado.</li>
+completa de los recorridos y las fotos de los puntos, en un almacenamiento
+privado y cifrado.</li>
 <li><strong>Supabase</strong>: la planilla de viajes de SiriusFleet (solo
 módulo de camiones).</li>
 </ul>
@@ -138,8 +147,8 @@ ver lo suyo.</p>
 
 <h2>Cuánto tiempo se guardan</h2>
 <p>Mientras tu cuenta exista. Si la eliminas, borramos tu cuenta, tus
-recorridos, tus proyectos y tus informes de error de inmediato; las copias de
-respaldo del
+recorridos, tus puntos con sus fotos, tus proyectos y tus informes de error de
+inmediato; las copias de respaldo del
 almacenamiento se purgan en un máximo de 30 días. Los viajes de camión que
 confirmaste quedan en la planilla operativa de SiriusFleet, porque son
 registros de la operación de la empresa, pero ya no quedan ligados a tu
@@ -190,8 +199,8 @@ de 10 días hábiles y te confirmamos por correo.</p>
 <h2>Qué se borra</h2>
 <ul>
 <li>Tu cuenta: nombre, correo, foto, contraseña y número de cédula.</li>
-<li>Tus recorridos, polígonos y proyectos, en la base de datos y en el
-almacenamiento de archivos.</li>
+<li>Tus recorridos, polígonos, puntos con sus fotos y proyectos, en la base
+de datos y en el almacenamiento de archivos.</li>
 <li>El historial de sincronizaciones y los informes de error de tu
 cuenta.</li>
 <li>Lo guardado en el teléfono, si la eliminas desde la app.</li>

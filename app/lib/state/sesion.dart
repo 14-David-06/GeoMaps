@@ -138,17 +138,39 @@ class Sesion {
 /// Estado del login. Tres situaciones, no dos: entrando importa porque el
 /// intercambio con Google tarda y la pantalla no puede quedarse muda.
 class EstadoSesion {
-  const EstadoSesion({this.sesion, this.cargando = false, this.error});
+  const EstadoSesion({
+    this.sesion,
+    this.cargando = false,
+    this.error,
+    this.arrancando = false,
+  });
 
   final Sesion? sesion;
+
+  /// Hay un intento de entrar en curso. La pantalla de ingreso lo muestra en
+  /// su boton y **sigue en pantalla**: si el intento falla, el correo que la
+  /// persona escribio tiene que seguir ahi.
   final bool cargando;
   final String? error;
 
+  /// Todavia se esta leyendo la sesion guardada, al abrir la app. Dura
+  /// milisegundos y es lo unico que se espera con la pantalla en blanco.
+  final bool arrancando;
+
+  /// Con la sesion al dia: puede subir y traer cosas del servidor.
   bool get autenticado => sesion != null && !sesion!.vencida;
+
+  /// La sesion vencio y la persona **sigue adentro**: trabaja con lo que hay
+  /// en el telefono, y nada sube hasta que vuelva a entrar con senal.
+  ///
+  /// No se la saca a la pantalla de ingreso porque entrar necesita red, y la
+  /// sesion vence donde vence: a veces en el lote, que es el unico lugar donde
+  /// no se puede volver a entrar. La app le avisa y la deja trabajar.
+  bool get vencida => sesion?.vencida ?? false;
 }
 
 class SesionNotifier extends StateNotifier<EstadoSesion> {
-  SesionNotifier(this._api) : super(const EstadoSesion(cargando: true)) {
+  SesionNotifier(this._api) : super(const EstadoSesion(arrancando: true)) {
     _restaurar();
   }
 
@@ -189,15 +211,9 @@ class SesionNotifier extends StateNotifier<EstadoSesion> {
         return;
       }
       final sesion = Sesion.deJson(jsonDecode(crudo) as Map<String, dynamic>);
-      if (sesion.vencida) {
-        await _limpiar();
-        state = const EstadoSesion(
-          error:
-              'La sesion vencio. Busca senal y volve a entrar; el trabajo '
-              'guardado en el telefono no se perdio.',
-        );
-        return;
-      }
+      // Vencida o no, la persona queda adentro (ver `EstadoSesion.vencida`).
+      // El token vencido se monta igual: el servidor lo rechaza con un
+      // mensaje que dice justo eso, y es lo que muestra la sincronizacion.
       _api.token = token;
       state = EstadoSesion(sesion: sesion);
     } catch (_) {
@@ -207,8 +223,19 @@ class SesionNotifier extends StateNotifier<EstadoSesion> {
     }
   }
 
+  /// La sesion vencida de quien esta volviendo a entrar, si es el caso.
+  ///
+  /// Se conserva mientras dura el intento y si el intento falla: quien probo
+  /// entrar sin senal, o se equivoco de clave, tiene que seguir adentro con
+  /// lo suyo, no quedar afuera por haber intentado.
+  Sesion? get _vencida {
+    final actual = state.sesion;
+    return actual != null && actual.vencida ? actual : null;
+  }
+
   Future<void> entrar() async {
-    state = const EstadoSesion(cargando: true);
+    final vencida = _vencida;
+    state = EstadoSesion(sesion: vencida, cargando: true);
     try {
       if (Config.googleServerClientId.isEmpty) {
         throw Exception(
@@ -220,7 +247,7 @@ class SesionNotifier extends StateNotifier<EstadoSesion> {
       final cuenta = await _google.signIn();
       if (cuenta == null) {
         // La persona cancelo. No es un error y no se muestra como tal.
-        state = const EstadoSesion();
+        state = EstadoSesion(sesion: vencida);
         return;
       }
 
@@ -234,9 +261,9 @@ class SesionNotifier extends StateNotifier<EstadoSesion> {
 
       await _abrir(() => _api.entrar(idToken));
     } on ApiError catch (e) {
-      state = EstadoSesion(error: e.mensaje);
+      state = EstadoSesion(sesion: vencida, error: e.mensaje);
     } catch (e) {
-      state = EstadoSesion(error: _traducir(e));
+      state = EstadoSesion(sesion: vencida, error: _traducir(e));
     }
   }
 
@@ -262,13 +289,14 @@ class SesionNotifier extends StateNotifier<EstadoSesion> {
   Future<void> _conFormulario(
     Future<Map<String, dynamic>> Function() llamada,
   ) async {
-    state = const EstadoSesion(cargando: true);
+    final vencida = _vencida;
+    state = EstadoSesion(sesion: vencida, cargando: true);
     try {
       await _abrir(llamada);
     } on ApiError catch (e) {
-      state = EstadoSesion(error: e.mensaje);
+      state = EstadoSesion(sesion: vencida, error: e.mensaje);
     } catch (e) {
-      state = EstadoSesion(error: _traducir(e));
+      state = EstadoSesion(sesion: vencida, error: _traducir(e));
     }
   }
 
@@ -348,16 +376,28 @@ class SesionNotifier extends StateNotifier<EstadoSesion> {
     }
   }
 
-  /// Cierra sesion.
+  /// Cierra sesion. No borra nada del telefono: lo que no subio queda en la
+  /// base local, atado a la cuenta que lo hizo.
   ///
-  /// TODO: antes de limpiar, avisar si quedan trazados sin sincronizar y
-  /// ofrecer esperar a tener red. Un `signOut` que se lleva por delante la
-  /// jornada de alguien es la peor falla posible de esta app.
+  /// Las pantallas no llaman a esto directo sino a `cerrarSesion`
+  /// (`ui/cerrar_sesion.dart`), que antes avisa si queda algo sin subir y
+  /// ofrece subirlo: un cierre de sesion que deja la jornada de alguien
+  /// esperando en un telefono ajeno es la peor falla posible de esta app.
   Future<void> salir() async {
     // Inofensivo si la persona entro con clave: sin sesion de Google abierta,
     // `signOut` no hace nada. Una rama por proveedor aca no compraria nada.
-    await _google.signOut();
-    await _limpiar();
+    try {
+      await _google.signOut();
+    } catch (_) {
+      // Los servicios de Google del telefono pueden estar rotos -es la razon
+      // por la que existe la puerta de clave-, y eso no puede dejar a alguien
+      // sin poder cerrar su sesion: la nuestra se cierra igual.
+    }
+    try {
+      await _limpiar();
+    } catch (_) {
+      // Lo mismo si el almacen seguro del telefono no responde.
+    }
     state = const EstadoSesion();
   }
 

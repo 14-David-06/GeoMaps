@@ -36,7 +36,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Path, Request
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
@@ -58,6 +58,12 @@ from .schemas_camiones import (
     VueltasResponse,
 )
 from .schemas_errores import ErroresRequest, ErroresResponse
+from .schemas_fotos import (
+    FotoConfirmacion,
+    FotoConfirmada,
+    FotoPedido,
+    FotoSubida,
+)
 from .schemas_sync import SyncRequest, SyncResponse
 from .services import (
     airtable,
@@ -66,6 +72,7 @@ from .services import (
     camiones,
     cuenta,
     errores_app,
+    fotos,
     sincronizacion,
     version_app,
 )
@@ -631,6 +638,34 @@ async def sync(
     que vuelva a mandar tambien lo que ya subio.
     """
     return await sincronizacion.sincronizar(get_settings(), identidad, req)
+
+
+@app.post("/v1/fotos", response_model=FotoSubida)
+async def pedir_subida_de_foto(
+    req: FotoPedido,
+    identidad: auth.Identidad = Depends(auth.identidad_de_request),
+    _: None = Depends(auth.verificar_api_key),
+) -> FotoSubida:
+    """El telefono quiere subir la foto de un punto: se le dice a donde.
+
+    Devuelve una URL prefirmada de PUT contra el bucket. La foto no pasa por
+    aca. Ver `services/fotos.py`.
+    """
+    return await fotos.pedir_subida(get_settings(), identidad, req)
+
+
+@app.post("/v1/fotos/{codigo}/confirmar", response_model=FotoConfirmada)
+async def confirmar_foto(
+    req: FotoConfirmacion,
+    # Con el mismo patron que en el cuerpo: termina adentro de una llave de S3.
+    codigo: str = Path(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{7,63}$"),
+    identidad: auth.Identidad = Depends(auth.identidad_de_request),
+    _: None = Depends(auth.verificar_api_key),
+) -> FotoConfirmada:
+    """El telefono avisa que la foto ya esta en el bucket: recien ahi se
+    escribe su fila en `Archivos`. 409 si todavia no llego; el telefono la
+    vuelve a subir."""
+    return await fotos.confirmar(get_settings(), identidad, codigo, req)
 
 
 @app.post("/v1/errores", response_model=ErroresResponse)

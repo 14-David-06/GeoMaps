@@ -9,6 +9,7 @@ import '../data/db/app_database.dart';
 import '../data/db/enums.dart';
 import 'geojson.dart';
 import 'gpx.dart';
+import 'informe_pdf.dart';
 import 'kml.dart';
 
 /// En que formato sale lo que se entrega.
@@ -20,7 +21,11 @@ enum FormatoEntrega {
   gpx('GPX', 'gpx', 'application/gpx+xml'),
 
   /// Para quien lo va a procesar: QGIS, PostGIS, un script.
-  geojson('GeoJSON', 'geojson', 'application/geo+json');
+  geojson('GeoJSON', 'geojson', 'application/geo+json'),
+
+  /// Para imprimir, y para quien no usa mapas: el levantamiento en una hoja,
+  /// con sus numeros, su forma y lo que hay que saber de su precision.
+  pdf('Informe PDF', 'pdf', 'application/pdf');
 
   const FormatoEntrega(this.titulo, this.extension, this.mime);
 
@@ -45,6 +50,11 @@ abstract final class Exportador {
     FormatoEntrega formato, {
     List<Waypoint> marcas = const [],
   }) {
+    if (formato == FormatoEntrega.pdf) {
+      // El informe no es texto: lo arma `InformePdf`, y `compartir` sabe ir
+      // a buscarlo. Sin esto caeria en el caso de abajo y saldria un GPX.
+      throw ArgumentError('El informe PDF no tiene contenido de texto.');
+    }
     final geojson = jsonDecode(trazado.geometria) as Map<String, dynamic>;
     if (formato == FormatoEntrega.geojson) {
       return const JsonEncoder.withIndent('  ').convert(geojson);
@@ -101,15 +111,28 @@ abstract final class Exportador {
   );
 
   /// Escribe el archivo y abre la hoja de compartir del telefono.
+  ///
+  /// [proyecto] y [autor] solo los usa el informe PDF, que los pone en el
+  /// papel: en los otros formatos no hay donde.
   static Future<void> compartir(
     Trazado trazado,
     FormatoEntrega formato, {
     List<Waypoint> marcas = const [],
-  }) {
+    String? proyecto,
+    String? autor,
+  }) async {
+    final List<int> bytes = formato == FormatoEntrega.pdf
+        ? await InformePdf.deTrazado(
+            trazado,
+            marcas: marcas,
+            proyecto: proyecto,
+            autor: autor,
+          )
+        : utf8.encode(contenido(trazado, formato, marcas: marcas));
     return _compartir(
       nombre: trazado.nombre,
       formato: formato,
-      texto: contenido(trazado, formato, marcas: marcas),
+      bytes: bytes,
       detalle: descripcion(trazado),
     );
   }
@@ -149,11 +172,16 @@ abstract final class Exportador {
             },
         ],
       }),
+      // El informe es de un levantamiento, con su forma y sus medidas. La
+      // pantalla no lo ofrece para una lista de puntos sueltos.
+      FormatoEntrega.pdf => throw ArgumentError(
+        'No hay informe PDF de una lista de puntos.',
+      ),
     };
     return _compartir(
       nombre: nombre,
       formato: formato,
-      texto: texto,
+      bytes: utf8.encode(texto),
       detalle: puntos.length == 1 ? '1 punto' : '${puntos.length} puntos',
     );
   }
@@ -161,14 +189,14 @@ abstract final class Exportador {
   static Future<void> _compartir({
     required String nombre,
     required FormatoEntrega formato,
-    required String texto,
+    required List<int> bytes,
     required String detalle,
   }) async {
     final carpeta = await getTemporaryDirectory();
     final archivo = File(
       p.join(carpeta.path, '${nombreDeArchivo(nombre)}.${formato.extension}'),
     );
-    await archivo.writeAsString(texto, flush: true);
+    await archivo.writeAsBytes(bytes, flush: true);
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile(archivo.path, mimeType: formato.mime)],

@@ -9,6 +9,7 @@ import '../core/geo.dart';
 import '../state/gps.dart';
 import '../state/grabacion.dart';
 import '../state/sesion.dart';
+import '../ui/boton_voz.dart';
 import '../ui/calificar_ruta.dart';
 import '../ui/capa_ruta.dart';
 import '../ui/mapa_page.dart';
@@ -154,6 +155,9 @@ class PanelViaje extends ConsumerWidget {
                     ),
                   ),
                 ),
+                // El parlante: la vuelta avisa en voz alta cuando llega
+                // y cuando vuelve.
+                const BotonVoz(),
                 // Devolverla solo se puede antes de llegar; despues no hay
                 // nada que ofrecer aca.
                 if (seg.puedeDevolver)

@@ -8,7 +8,7 @@ import '../state/descarga.dart';
 import '../state/gps.dart';
 import '../state/red.dart';
 import '../state/zona_guaicaramo.dart';
-import 'mapa_page.dart' show CapaBase;
+import 'mapa/capa_base.dart';
 import 'proveedor_teselas.dart';
 import 'theme.dart';
 
@@ -135,6 +135,7 @@ class _DescargarRegionPageState extends ConsumerState<DescargarRegionPage> {
                         plantilla: CapaBase.satelite.url,
                         paquete: CapaBase.satelite.paquete,
                       ),
+                      tileDisplay: apareceTesela,
                     ),
                   ],
                 ),

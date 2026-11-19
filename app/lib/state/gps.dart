@@ -40,6 +40,9 @@ class Gps {
   /// Ver [Ubicacion.flujo]: se alterna si pasa un rato sin ningun fix.
   bool _soloChipGps = false;
 
+  /// Cuanto es "un rato": mas largo cada vez que el cambio no sirvio.
+  final _paciencia = PacienciaGps();
+
   /// Si el flujo corre como servicio en primer plano, con su notificacion. Lo
   /// prende quien graba un viaje y lo apaga al terminar.
   bool _enFondo = false;
@@ -57,6 +60,17 @@ class Gps {
   /// como la distancia de cada vuelta en la lista; nula si el GPS no esta
   /// prendido o todavia no dio nada.
   Position? get ultima => _ultima;
+
+  /// Olvida la ultima posicion y el ultimo error, como recien abierta la app.
+  ///
+  /// Es para las pruebas: el GPS es uno solo para toda la app, y sin esto cada
+  /// prueba arrancaria parada donde quedo la anterior.
+  @visibleForTesting
+  void olvidar() {
+    _ultima = null;
+    _error = null;
+    _ultimoFixVivo = null;
+  }
 
   /// La posicion, empezando por la ultima que se tenga. Quien entra a una
   /// pantalla nueva ve de una donde esta, sin esperar al proximo fix.
@@ -82,6 +96,22 @@ class Gps {
   /// la vez hacen que `geolocator` tire una excepcion.
   void reiniciar() {
     if (_salida.hasListener && !_arrancando) _arrancar();
+  }
+
+  /// Reabre el flujo **solo si se quedo mudo**: venia dando posiciones y dejo
+  /// de darlas, o termino en error. Es lo que pide quien entra al mapa.
+  ///
+  /// Si todavia no dio ninguna posicion no lo toca. Sin internet el primer
+  /// fix tarda minutos -el telefono tiene que bajar del satelite lo que con
+  /// red le llega en un segundo- y esa escucha tiene que ser seguida: reabrir
+  /// el flujo la corta y la hace empezar de nuevo. Antes se reabria en cada
+  /// entrada al mapa, que es justo lo que hace quien esta esperando el GPS.
+  void despertar() {
+    final ultimo = _ultimoFixVivo;
+    final mudo =
+        ultimo != null &&
+        DateTime.now().difference(ultimo) > const Duration(seconds: 20);
+    if (_error != null || mudo) reiniciar();
   }
 
   /// Mantiene la ubicacion viva con la pantalla apagada mientras [activo].
@@ -192,7 +222,8 @@ class Gps {
     final desde = ultimo == null || ultimo.isBefore(_inicioFlujo)
         ? _inicioFlujo
         : ultimo;
-    if (DateTime.now().difference(desde) > const Duration(seconds: 40)) {
+    if (_paciencia.seAgoto(DateTime.now(), desde)) {
+      _paciencia.alCambiar();
       _soloChipGps = !_soloChipGps;
       _arrancar();
     }
@@ -210,7 +241,10 @@ class Gps {
       }
       return;
     }
-    if (!deCache) _ultimoFixVivo = DateTime.now();
+    if (!deCache) {
+      _ultimoFixVivo = DateTime.now();
+      _paciencia.alFix();
+    }
     _ultima = p;
     _error = null;
     _salida.add(p);
@@ -220,6 +254,45 @@ class Gps {
     _error = e;
     _salida.addError(e);
   }
+}
+
+/// Cuanto se espera sin un fix antes de reabrir el GPS con el otro proveedor.
+///
+/// El primer cambio es a los 40 segundos, como siempre: es lo que rescata al
+/// telefono raro donde el proveedor de Google no entrega nada. Pero si el
+/// cambio no sirvio, el problema no es el proveedor, es que no hay senal de
+/// GPS todavia -bajo la palma, o sin internet, donde el primer fix tarda
+/// minutos-, y ahi reabrir cada 40 segundos es contraproducente: cada vez que
+/// se reabre, el telefono deja de escuchar los satelites y vuelve a empezar.
+/// Por eso cada espera es el doble de la anterior, hasta cinco minutos, y
+/// vuelve a ser corta en cuanto llega un fix.
+class PacienciaGps {
+  PacienciaGps({
+    this.primera = const Duration(seconds: 40),
+    this.tope = const Duration(minutes: 5),
+  });
+
+  final Duration primera;
+  final Duration tope;
+
+  int _cambios = 0;
+
+  /// Lo que se espera ahora antes de cambiar de proveedor.
+  Duration get espera {
+    final doblada = primera * (1 << (_cambios > 8 ? 8 : _cambios));
+    return doblada > tope ? tope : doblada;
+  }
+
+  /// Si paso demasiado sin un fix, contando desde [desde].
+  bool seAgoto(DateTime ahora, DateTime desde) =>
+      ahora.difference(desde) > espera;
+
+  /// Se cambio de proveedor y hay que ver si sirve: la proxima espera es mas
+  /// larga.
+  void alCambiar() => _cambios++;
+
+  /// Llego una posicion: el GPS anda, y la espera vuelve a ser la corta.
+  void alFix() => _cambios = 0;
 }
 
 class PermisoUbicacionDenegado implements Exception {

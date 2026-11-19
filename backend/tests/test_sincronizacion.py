@@ -14,7 +14,9 @@ import pytest
 from fastapi import HTTPException
 
 from app.config import get_settings
-from app.schemas_sync import SyncRequest, TrazadoSync, WaypointSync
+from pydantic import ValidationError
+
+from app.schemas_sync import ProyectoSync, SyncRequest, TrazadoSync, WaypointSync
 from app.services import airtable, almacenamiento, sincronizacion
 from app.services.auth import Identidad
 
@@ -432,3 +434,90 @@ async def test_un_recorrido_cualquiera_no_toca_el_seguimiento(base, monkeypatch)
     monkeypatch.setattr(camiones, "seguimiento", nunca)
     r = await _sync(YO, _ruta())
     assert r.trazados[0].ok
+
+
+# --- Proyectos creados en el telefono ---------------------------------------
+
+UUID_P = "0b8f2c1e-5a3d-4e7f-9b1a-2c3d4e5f6a7b"
+
+
+def _proyecto(codigo: str = UUID_P, **cambios) -> ProyectoSync:
+    datos = {
+        "codigo": codigo,
+        "nombre": "Finca La Esperanza",
+        "cliente": "Palmas del Upia",
+        "municipio": "Barranca de Upia",
+    }
+    datos.update(cambios)
+    return ProyectoSync(**datos)
+
+
+async def _sync_con(ident: Identidad, **partes):
+    return await sincronizacion.sincronizar(
+        get_settings(), ident, SyncRequest(**partes)
+    )
+
+
+async def test_sube_el_proyecto_con_su_dueno(base):
+    r = await _sync_con(YO, proyectos=[_proyecto()])
+
+    assert r.proyectos[0].ok, r.proyectos[0].error
+    [fila] = base.de("Proyectos")
+    assert fila["Codigo proyecto"] == UUID_P
+    assert fila["Nombre"] == "Finca La Esperanza"
+    assert fila["Cliente"] == "Palmas del Upia"
+    assert fila["Estado"] == "Activo"
+    assert fila["Dueno Auth UID"] == "111"
+
+
+async def test_lo_que_se_levanta_cae_en_su_proyecto_y_no_en_el_local(base):
+    # El proyecto y su primera ruta suben en la misma tanda, recien creados.
+    r = await _sync_con(
+        YO,
+        proyectos=[_proyecto()],
+        trazados=[_ruta(proyecto_codigo=UUID_P)],
+    )
+
+    assert r.trazados[0].ok, r.trazados[0].error
+    assert (
+        r.trazados[0].llave_geometria
+        == f"proyectos/{UUID_P}/geometrias/ruta-0001.geojson"
+    )
+    assert [p["Codigo proyecto"] for p in base.de("Proyectos")] == [UUID_P]
+
+
+async def test_nadie_se_queda_con_el_proyecto_de_otro(base):
+    # El codigo lo genera el telefono: conocer el de un proyecto ajeno no
+    # alcanza para quedarselo.
+    await _sync_con(OTRO, proyectos=[_proyecto()])
+
+    r = await _sync_con(YO, proyectos=[_proyecto(nombre="Ahora es mio")])
+
+    assert not r.proyectos[0].ok
+    [fila] = base.de("Proyectos")
+    assert fila["Dueno Auth UID"] == "222"
+    assert fila["Nombre"] == "Finca La Esperanza"
+
+
+async def test_archivar_lo_cierra_sin_borrarlo_ni_duplicarlo(base):
+    await _sync_con(YO, proyectos=[_proyecto()])
+    await _sync_con(YO, proyectos=[_proyecto(activo=False)])
+
+    [fila] = base.de("Proyectos")
+    assert fila["Estado"] == "Cerrado"
+
+
+def test_el_codigo_de_un_proyecto_tiene_que_ser_un_uuid():
+    # `local-<Auth UID>` es el "sin proyecto" de cada cuenta y lo arma el
+    # backend. Si el telefono pudiera mandar ese codigo, alguien crearia a su
+    # nombre el de otra cuenta.
+    for malo in ("local-222", "local", "../otro", "proyecto-1", ""):
+        with pytest.raises(ValidationError):
+            _proyecto(codigo=malo)
+
+
+async def test_un_telefono_que_no_manda_proyectos_sigue_andando(base):
+    r = await _sync(YO, _ruta())
+
+    assert r.trazados[0].ok
+    assert r.proyectos == []

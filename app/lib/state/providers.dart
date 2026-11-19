@@ -2,6 +2,7 @@ import 'package:drift_flutter/drift_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/version_app.dart';
+import '../data/archivos_repository.dart';
 import '../data/db/app_database.dart';
 import '../data/mapas_repository.dart';
 import '../data/proyectos_repository.dart';
@@ -34,6 +35,11 @@ final proyectosRepositoryProvider = Provider<ProyectosRepository>(
 
 final mapasRepositoryProvider = Provider<MapasRepository>(
   (ref) => MapasRepository(ref.watch(dbProvider)),
+);
+
+/// Las fotos de los puntos: donde estan en el telefono y cuales faltan subir.
+final archivosRepositoryProvider = Provider<ArchivosRepository>(
+  (ref) => ArchivosRepository(ref.watch(dbProvider)),
 );
 
 /// Las capas encendidas del telefono, listas para que el mapa las dibuje.

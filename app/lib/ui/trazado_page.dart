@@ -10,6 +10,9 @@ import '../core/geojson.dart';
 import '../data/db/app_database.dart';
 import '../data/db/enums.dart';
 import '../state/captura.dart';
+import '../state/fotos.dart';
+import '../state/providers.dart';
+import '../state/sesion.dart';
 import '../state/sincronizador.dart';
 import 'calificar_ruta.dart';
 import 'capa_ruta.dart' show formatearDistancia;
@@ -134,6 +137,36 @@ class _Lista extends ConsumerWidget {
 
 /// Compartir puede fallar -sin espacio, sin ninguna app que reciba el
 /// archivo- y eso no puede pasar callado.
+/// Pregunta en que formato y comparte un recorrido o un area, con los
+/// puntos que se marcaron mientras se lo levantaba.
+///
+/// Al informe PDF le pasa ademas el nombre del proyecto y de quien lo
+/// levanto, que son lo primero que busca quien recibe el papel.
+Future<void> compartirTrazado(
+  BuildContext context,
+  WidgetRef ref,
+  Trazado trazado,
+) async {
+  final formato = await elegirFormato(context, conInforme: true);
+  if (formato == null || !context.mounted) return;
+  await _intentar(context, () async {
+    final marcas = await ref
+        .read(waypointsRepositoryProvider)
+        .delTrazado(trazado.codigo);
+    final proyecto = await ref
+        .read(proyectosRepositoryProvider)
+        .observarUno(trazado.proyectoCodigo)
+        .first;
+    await Exportador.compartir(
+      trazado,
+      formato,
+      marcas: marcas,
+      proyecto: proyecto?.nombre,
+      autor: ref.read(sesionProvider).sesion?.nombre,
+    );
+  });
+}
+
 Future<void> _intentar(
   BuildContext context,
   Future<void> Function() accion,
@@ -268,16 +301,8 @@ class _FilaTrazado extends ConsumerWidget {
     );
   }
 
-  Future<void> _compartir(BuildContext context, WidgetRef ref) async {
-    final formato = await elegirFormato(context);
-    if (formato == null || !context.mounted) return;
-    await _intentar(context, () async {
-      final marcas = await ref
-          .read(waypointsRepositoryProvider)
-          .delTrazado(trazado.codigo);
-      await Exportador.compartir(trazado, formato, marcas: marcas);
-    });
-  }
+  Future<void> _compartir(BuildContext context, WidgetRef ref) =>
+      compartirTrazado(context, ref, trazado);
 
   Future<void> _renombrar(BuildContext context, WidgetRef ref) async {
     final texto = TextEditingController(text: trazado.nombre);
@@ -366,7 +391,7 @@ class _FilaPunto extends ConsumerWidget {
       trailing: IconButton(
         icon: const Icon(Icons.delete_outline),
         tooltip: 'Borrar',
-        onPressed: () => ref.read(waypointsRepositoryProvider).borrar(w.codigo),
+        onPressed: () => ref.read(fotosProvider).borrarPunto(w.codigo),
       ),
       onTap: () => Navigator.pop(context, Levantado.punto(w)),
     );
@@ -505,16 +530,7 @@ class FichaTrazado extends ConsumerWidget {
             IconButton(
               tooltip: 'Compartir',
               icon: const Icon(Icons.ios_share),
-              onPressed: () async {
-                final formato = await elegirFormato(context);
-                if (formato == null || !context.mounted) return;
-                await _intentar(context, () async {
-                  final marcas = await ref
-                      .read(waypointsRepositoryProvider)
-                      .delTrazado(t.codigo);
-                  await Exportador.compartir(t, formato, marcas: marcas);
-                });
-              },
+              onPressed: () => compartirTrazado(context, ref, t),
             ),
             IconButton(
               tooltip: 'Cerrar',

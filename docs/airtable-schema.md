@@ -173,8 +173,14 @@ tiene el mapa nuevo en el telefono?* Sin esta tabla la respuesta es llamarlo.
 | `Trazados` | Link -> Trazados | |
 | `Dueno` | Link -> Usuarios | El mismo dato, para navegar la base a mano |
 
-**El proyecto `local`.** El mapa hoy se abre sin proyecto y lo que se guarda en
-el telefono cae en `proyectoCodigo = 'local'`, la misma cadena en todos los
+**De donde salen.** Los crea la persona en la app (Proyectos > Nuevo), con un
+UUID que genera el telefono, y suben en `POST /v1/sync` antes que lo que cuelga
+de ellos. En la app se elige en cual se esta trabajando, y los recorridos, las
+areas, los puntos y sus fotos que se levanten quedan en ese. Archivar uno en la
+app lo deja `Cerrado` aca: no se borra.
+
+**El proyecto `local`.** Lo que se levanta sin haber elegido un proyecto cae, en
+el telefono, en `proyectoCodigo = 'local'`, la misma cadena en todos los
 telefonos. Al subir, el backend lo traduce a un proyecto por cuenta,
 `Codigo proyecto = local-<Auth UID>` con `Nombre = Sin proyecto`, creado la
 primera vez con su dueno. Asi no se mezclan las rutas de distintas cuentas ni
@@ -290,8 +296,15 @@ Todo lo que la app **genera**. Una fila por entregable.
 | `Generado por` | Link -> Usuarios | |
 
 Las fotos se guardan bajo el prefijo del proyecto
-(`proyectos/<codigo>/fotos/<uuid>.jpg`) por la misma razon que en `sirius_agro`:
-borrar el proyecto tiene que llevarse sus archivos.
+(`proyectos/<codigo>/fotos/<codigo waypoint>/<uuid>.jpg`) por la misma razon
+que en `sirius_agro`: borrar el proyecto tiene que llevarse sus archivos.
+
+**Las fotos no pasan por el backend.** El telefono pide a donde subirla
+(`POST /v1/fotos`, que contesta una URL prefirmada de PUT), la sube directo al
+bucket, y avisa (`POST /v1/fotos/{codigo}/confirmar`). Recien ahi se escribe
+esta fila, con el `Adjunto` copiado del bucket. Una foto solo sube despues de
+su punto: la fila se enlaza a el, y el backend revisa que el punto sea de
+quien pide. Ver `backend/app/services/fotos.py`.
 
 ### `Sincronizaciones`
 

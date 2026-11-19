@@ -7,8 +7,10 @@ import '../core/geo.dart';
 import '../data/db/app_database.dart';
 import '../data/db/enums.dart';
 import '../state/captura.dart';
+import '../state/proyecto_activo.dart';
 import '../state/sesion.dart';
 import 'capa_ruta.dart' show formatearDistancia;
+import 'fotos_punto.dart';
 
 /// Marcar un punto: nombre, simbolo y nota.
 ///
@@ -82,7 +84,7 @@ Future<Waypoint?> marcarPunto(
   );
   if (datos == null) return null;
 
-  return ref
+  final guardado = await ref
       .read(waypointsRepositoryProvider)
       .marcar(
         usuarioCodigo: usuario,
@@ -93,15 +95,30 @@ Future<Waypoint?> marcarPunto(
         precisionM: precisionM,
         altitudM: altitudM,
         trazadoCodigo: trazadoCodigo,
+        proyectoCodigo: await ref.read(proyectoParaGuardarProvider.future),
       );
+  // La foto se toma con el punto ya guardado: si la camara falla, o Android
+  // cierra la app mientras esta abierta, el punto no se pierde con ella.
+  if (datos.conFoto && context.mounted) {
+    await agregarFoto(context, ref, guardado);
+  }
+  return guardado;
 }
 
 class _DatosPunto {
-  const _DatosPunto(this.nombre, this.simbolo, this.nota);
+  const _DatosPunto(
+    this.nombre,
+    this.simbolo,
+    this.nota, {
+    this.conFoto = false,
+  });
 
   final String nombre;
   final SimboloWaypoint simbolo;
   final String nota;
+
+  /// Si despues de guardarlo hay que abrir la camara.
+  final bool conFoto;
 }
 
 class _DialogoPunto extends StatefulWidget {
@@ -131,8 +148,10 @@ class _DialogoPuntoState extends State<_DialogoPunto> {
     super.dispose();
   }
 
-  void _guardar() =>
-      Navigator.pop(context, _DatosPunto(_nombre.text, _simbolo, _nota.text));
+  void _guardar({bool conFoto = false}) => Navigator.pop(
+    context,
+    _DatosPunto(_nombre.text, _simbolo, _nota.text, conFoto: conFoto),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -215,10 +234,18 @@ class _DialogoPuntoState extends State<_DialogoPunto> {
           ],
         ),
       ),
+      // Tres botones: con la letra agrandada no entran en una fila, y la
+      // barra de acciones los apila sola.
+      actionsOverflowButtonSpacing: 4,
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancelar'),
+        ),
+        OutlinedButton.icon(
+          onPressed: () => _guardar(conFoto: true),
+          icon: const Icon(Icons.photo_camera_outlined),
+          label: const Text('Guardar con foto'),
         ),
         FilledButton(onPressed: _guardar, child: const Text('Guardar')),
       ],
@@ -384,6 +411,10 @@ class FichaPunto extends StatelessWidget {
               const SizedBox(height: 4),
               Text(w.nota!, maxLines: 3, overflow: TextOverflow.ellipsis),
             ],
+            Padding(
+              padding: const EdgeInsets.only(top: 8, right: 8),
+              child: FotosDelPunto(punto: w),
+            ),
             // Un Wrap y no una fila: con la letra agrandada los dos botones no
             // entran lado a lado, y el segundo baja en vez de salirse.
             Padding(

@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../camiones/panel_viaje.dart' show terminarViaje;
 import '../core/geo.dart';
 import '../state/grabacion.dart';
+import '../state/proyecto_activo.dart';
 import 'calificar_ruta.dart';
 import 'capa_ruta.dart' show formatearDistancia;
 
@@ -69,7 +70,10 @@ Future<bool> iniciarRecorrido(BuildContext context, WidgetRef ref) async {
   final limpio = nombre.trim();
   await ref
       .read(grabadorProvider.notifier)
-      .iniciar(nombre: limpio.isEmpty ? 'Recorrido' : limpio);
+      .iniciar(
+        nombre: limpio.isEmpty ? 'Recorrido' : limpio,
+        proyectoCodigo: await ref.read(proyectoParaGuardarProvider.future),
+      );
   return ref.read(grabadorProvider).grabando;
 }
 

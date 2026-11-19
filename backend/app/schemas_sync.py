@@ -115,6 +115,28 @@ class WaypointSync(BaseModel):
     marcado_en: datetime
 
 
+class ProyectoSync(BaseModel):
+    """Un proyecto creado en el telefono: el agrupador bajo el que se guarda
+    lo que se levanta (un predio, un contrato, una visita).
+
+    El codigo tiene que ser un UUID, no cualquier texto. Los proyectos
+    "sin proyecto" de cada cuenta se llaman `local-<Auth UID>` y los arma el
+    backend: si el telefono pudiera mandar un codigo libre, alguien podria
+    crear a su nombre el `local-...` de otra cuenta, y de ahi en mas las rutas
+    de esa otra cuenta caerian en un prefijo de S3 compartido.
+    """
+
+    codigo: str = Field(
+        pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    )
+    nombre: str = Field(min_length=1, max_length=120)
+    cliente: str | None = Field(default=None, max_length=120)
+    municipio: str | None = Field(default=None, max_length=120)
+    # Falso es archivado: en la base queda `Cerrado`, no se borra.
+    activo: bool = True
+
+
 class SyncRequest(BaseModel):
     """Lo pendiente del telefono, en tandas.
 
@@ -124,6 +146,9 @@ class SyncRequest(BaseModel):
     Un punto son dos llamadas y ninguna a S3: entran mas por tanda.
     """
 
+    # Los proyectos van primero: un trazado se cuelga del suyo, y para eso
+    # el proyecto tiene que existir. Son una busqueda y una escritura cada uno.
+    proyectos: list[ProyectoSync] = Field(default_factory=list, max_length=20)
     trazados: list[TrazadoSync] = Field(default_factory=list, max_length=10)
     waypoints: list[WaypointSync] = Field(default_factory=list, max_length=20)
 
@@ -141,3 +166,4 @@ class SyncResponse(BaseModel):
     trazados: list[ResultadoItem]
     # Con default: un telefono viejo, que no manda puntos, no espera la llave.
     waypoints: list[ResultadoItem] = Field(default_factory=list)
+    proyectos: list[ResultadoItem] = Field(default_factory=list)

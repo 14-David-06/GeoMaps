@@ -8,10 +8,14 @@ import 'package:uuid/uuid.dart';
 
 import '../camiones/seguimiento.dart';
 import '../core/api_client.dart';
+import '../data/archivos_repository.dart';
 import '../data/db/app_database.dart';
 import '../data/db/enums.dart';
+import '../data/proyectos_repository.dart';
 import '../data/trazados_repository.dart';
 import '../data/waypoints_repository.dart';
+import '../ui/proveedor_teselas.dart' show reanudarTeselas;
+import 'errores.dart';
 import 'providers.dart';
 import 'red.dart';
 import 'sesion.dart';
@@ -46,19 +50,34 @@ class EstadoSincronizacion {
 ///
 ///   Proyectos -> Mapas -> Trazados -> Waypoints -> Archivos -> Sincronizaciones
 ///
-/// Hoy sube los trazados y los puntos marcados, en ese orden. Cada paso es
-/// un upsert por UUID: si una tanda se corta, la siguiente no duplica lo que ya
-/// quedo. Cada intento deja una fila en `Sincronizaciones` local, y el backend
+/// Hoy sube los proyectos, los trazados, los puntos marcados y las fotos de
+/// los puntos, en ese orden. Cada paso es un upsert por UUID: si una tanda se corta, la
+/// siguiente no duplica lo que ya quedo. Las fotos no pasan por el backend:
+/// se le pide a donde subirlas y van directo al bucket. Cada intento deja una fila en `Sincronizaciones` local, y el backend
 /// deja otra en Airtable: entre las dos se explica un dato que alguien dice que
 /// no aparece.
 class Sincronizador extends StateNotifier<EstadoSincronizacion> {
-  Sincronizador(this._db, this._trazados, this._api, this._usuario)
-    : _waypoints = WaypointsRepository(_db),
-      super(const EstadoSincronizacion());
+  Sincronizador(
+    this._db,
+    this._trazados,
+    this._api,
+    this._usuario, {
+    ArchivosRepository? archivos,
+    this._authUid,
+  }) : _waypoints = WaypointsRepository(_db),
+       _archivos = archivos ?? ArchivosRepository(_db),
+       _proyectos = ProyectosRepository(_db),
+       super(const EstadoSincronizacion());
 
   final AppDatabase _db;
   final TrazadosRepository _trazados;
   final WaypointsRepository _waypoints;
+  final ArchivosRepository _archivos;
+  final ProyectosRepository _proyectos;
+
+  /// De quien son los proyectos: en el telefono van por `Auth UID`, no por el
+  /// codigo de usuario. Nulo en las pruebas que no tocan proyectos.
+  final String? _authUid;
   final ApiClient _api;
   final String? _usuario;
 
@@ -94,15 +113,66 @@ class Sincronizador extends StateNotifier<EstadoSincronizacion> {
   Future<void> _subir(String usuario) async {
     final pendientes = await _trazados.pendientes(usuario);
     final hayPuntos = (await _waypoints.pendientes(usuario)).isNotEmpty;
-    if ((pendientes.isEmpty && !hayPuntos) || !mounted) return;
+    final hayFotos = (await _archivos.fotosParaSubir(usuario)).isNotEmpty;
+    final authUid = _authUid;
+    final proyectos = authUid == null
+        ? const <Proyecto>[]
+        : await _proyectos.pendientes(authUid);
+    if ((pendientes.isEmpty && !hayPuntos && !hayFotos && proyectos.isEmpty) ||
+        !mounted) {
+      return;
+    }
 
     state = EstadoSincronizacion(subiendo: true, ultimaVez: state.ultimaVez);
     final inicio = DateTime.now();
     var subidos = 0;
-    var enviados = pendientes.length;
+    var enviados = pendientes.length + proyectos.length;
     final errores = <String>[];
 
     try {
+      // Los proyectos primero: lo que sigue se cuelga de ellos, y un recorrido
+      // cuyo proyecto todavia no esta arriba se rechaza.
+      for (var i = 0; i < proyectos.length; i += tandaPuntos) {
+        final parte = proyectos.skip(i).take(tandaPuntos).toList();
+        final respuesta = await _api.sincronizar({
+          'proyectos': [
+            for (final p in parte)
+              {
+                'codigo': p.codigo,
+                'nombre': p.nombre,
+                'cliente': p.cliente,
+                'municipio': p.municipio,
+                'activo': p.activo,
+              },
+          ],
+        });
+        final resultados = respuesta['proyectos'] as List<dynamic>?;
+        if (resultados == null || resultados.isEmpty) {
+          // Un backend anterior a los proyectos: acepta la llamada y no dice
+          // nada de ellos. Lo demas sube igual.
+          errores.add(
+            'El servidor todavia no recibe proyectos. Quedan guardados en el '
+            'telefono, con lo que se levanto en ellos, y suben cuando se '
+            'actualice.',
+          );
+          break;
+        }
+        for (final r in resultados.cast<Map<String, dynamic>>()) {
+          if (r['ok'] == true) {
+            await _proyectos.marcarSubido(r['codigo'] as String);
+            subidos++;
+          } else {
+            final nombre =
+                parte
+                    .where((p) => p.codigo == r['codigo'])
+                    .firstOrNull
+                    ?.nombre ??
+                '${r['codigo']}';
+            errores.add('Proyecto $nombre: ${r['error']}');
+          }
+        }
+      }
+
       for (var i = 0; i < pendientes.length; i += tanda) {
         final parte = pendientes.skip(i).take(tanda).toList();
         final respuesta = await _api.sincronizar({
@@ -156,6 +226,57 @@ class Sincronizador extends StateNotifier<EstadoSincronizacion> {
                 '${r['codigo']}';
             errores.add('$nombre: ${r['error']}');
           }
+        }
+      }
+
+      // Las fotos van al final: cada una se enlaza a su punto, y para eso el
+      // punto tiene que haber subido. Las de puntos que acaban de subir en
+      // esta misma pasada ya entran.
+      final fotos = await _archivos.fotosParaSubir(usuario);
+      enviados += fotos.length;
+      for (final foto in fotos) {
+        final archivo = File(foto.rutaLocal);
+        if (!await archivo.exists()) {
+          // El archivo ya no esta en el telefono: no hay nada que subir, y
+          // una fila sola quedaria como "1 pendiente" para siempre.
+          await _archivos.borrarFoto(foto.codigo);
+          enviados--;
+          continue;
+        }
+        try {
+          final donde = await _api.pedirSubidaFoto({
+            'codigo': foto.codigo,
+            'waypoint_codigo': foto.waypointCodigo,
+            'proyecto_codigo': foto.proyectoCodigo,
+            'tamano_bytes': await archivo.length(),
+          });
+          await _api.subirArchivo(
+            donde['url'] as String,
+            await archivo.readAsBytes(),
+            donde['content_type'] as String? ?? 'image/jpeg',
+          );
+          final confirmada = await _api.confirmarFoto(foto.codigo, {
+            'waypoint_codigo': foto.waypointCodigo,
+            'proyecto_codigo': foto.proyectoCodigo,
+            'tomada_en': foto.creadoEn.toUtc().toIso8601String(),
+          });
+          await _archivos.marcarSubida(
+            foto.codigo,
+            confirmada['llave'] as String,
+          );
+          subidos++;
+        } on ApiError catch (e) {
+          if (e.sesionInvalida) rethrow;
+          if (e.codigo == 404 || e.codigo == 405) {
+            // Un backend anterior a las fotos. No se arregla reintentando
+            // ahora: se corta aca y se dice una sola vez.
+            errores.add(
+              'El servidor todavia no recibe fotos. Quedan guardadas en el '
+              'telefono y suben cuando se actualice.',
+            );
+            break;
+          }
+          errores.add('Una foto no subio: ${e.mensaje}');
         }
       }
     } on ApiError catch (e) {
@@ -280,6 +401,8 @@ final sincronizadorProvider =
         ref.watch(trazadosRepositoryProvider),
         ref.watch(apiProvider),
         ref.watch(sesionProvider.select((e) => e.sesion?.codigoUsuario)),
+        archivos: ref.watch(archivosRepositoryProvider),
+        authUid: ref.watch(sesionProvider.select((e) => e.sesion?.authUid)),
       ),
     );
 
@@ -292,15 +415,24 @@ final rutasGuardadasProvider = StreamProvider<List<RutaGuardada>>((ref) {
   return ref.watch(trazadosRepositoryProvider).observarRutas(usuario);
 });
 
-/// Cuanto falta por subir: trazados y puntos marcados.
+/// Cuanto falta por subir: proyectos, trazados, puntos marcados y fotos.
 final pendientesProvider = StreamProvider<int>((ref) {
   final usuario = ref.watch(
     sesionProvider.select((e) => e.sesion?.codigoUsuario),
   );
+  final authUid = ref.watch(sesionProvider.select((e) => e.sesion?.authUid));
   if (usuario == null) return Stream.value(0);
+  final deLaCuenta = sumarConteos(
+    sumarConteos(
+      ref.watch(trazadosRepositoryProvider).contarPendientes(usuario),
+      WaypointsRepository(ref.watch(dbProvider)).contarPendientes(usuario),
+    ),
+    ref.watch(archivosRepositoryProvider).contarPendientes(usuario),
+  );
+  if (authUid == null) return deLaCuenta;
   return sumarConteos(
-    ref.watch(trazadosRepositoryProvider).contarPendientes(usuario),
-    WaypointsRepository(ref.watch(dbProvider)).contarPendientes(usuario),
+    deLaCuenta,
+    ref.watch(proyectosRepositoryProvider).contarPendientes(authUid),
   );
 });
 
@@ -347,10 +479,17 @@ final sincronizacionAutomaticaProvider = Provider<void>((ref) {
   ref.listen<AsyncValue<RedState>>(redProvider, (antes, ahora) {
     final habia = antes?.valueOrNull?.hayRed ?? false;
     if (ahora.valueOrNull?.hayRed == true && !habia) {
+      // El mapa deja de esperar su pausa: lo que quedo borroso por falta de
+      // senal se vuelve a pedir ya.
+      reanudarTeselas();
       ref.read(sincronizadorProvider.notifier).sincronizar();
       // Con senal, de paso se refresca la cuenta: es como le llega al
       // telefono un perfil que se asigno en Airtable. Se limita sola.
       ref.read(sesionProvider.notifier).renovar();
+      // Y suben los fallos que la app anoto estando sin senal.
+      unawaited(
+        subirErrores(ref.read(registroErroresProvider), ref.read(apiProvider)),
+      );
     }
   }, fireImmediately: true);
 });

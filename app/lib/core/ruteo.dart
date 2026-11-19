@@ -221,6 +221,7 @@ class RedVial {
       porLaVia: camino.puntos,
       metros: camino.metros,
       minutosPorLaVia: camino.minutos,
+      cruces: camino.cruces,
     );
   }
 
@@ -293,14 +294,24 @@ class RedVial {
       nodos.add(n);
     }
 
+    final enOrden = nodos.reversed.toList();
     final puntos = <LatLng>[
       origen.punto,
-      for (final n in nodos.reversed) _nodos[n],
+      for (final n in enOrden) _nodos[n],
       destino.punto,
+    ];
+
+    // Por cuales de esos puntos pasa la ruta que sean un cruce de verdad: un
+    // nodo del que salen tres vias o mas. Es donde hay que decidir para donde
+    // seguir; un codo de la misma via, por cerrado que sea, no lo es.
+    final cruces = <int>[
+      for (var i = 0; i < enOrden.length; i++)
+        if (_arcos[enOrden[i]].length >= 3) i + 1,
     ];
 
     return _Camino(
       puntos: puntos,
+      cruces: cruces,
       metros: mejor,
       minutos:
           minutos[mejorNodo] +
@@ -353,6 +364,7 @@ class Ruta {
     required this.porLaVia,
     required this.metros,
     required this.minutosPorLaVia,
+    this.cruces = const [],
   });
 
   /// De donde salio el calculo: la posicion del GPS cuando se pidio.
@@ -363,6 +375,11 @@ class Ruta {
 
   /// La linea sobre las vias, de donde se entra a donde se sale.
   final List<LatLng> porLaVia;
+
+  /// En que puntos de [porLaVia] hay un cruce: tres vias o mas que se
+  /// juntan. Son los unicos lugares donde hay que elegir por donde seguir, y
+  /// de ahi salen las indicaciones de giro (`core/indicaciones.dart`).
+  final List<int> cruces;
 
   /// Metros de via. No incluye los dos tramos a campo traviesa.
   final double metros;
@@ -512,10 +529,12 @@ class _Proyeccion {
 class _Camino {
   const _Camino({
     required this.puntos,
+    required this.cruces,
     required this.metros,
     required this.minutos,
   });
   final List<LatLng> puntos;
+  final List<int> cruces;
   final double metros;
   final double minutos;
 }

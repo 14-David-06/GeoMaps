@@ -61,10 +61,14 @@ class MotorPlanos {
   /// Casi ningun plano llega asi: lo normal es que traiga pintada la hoja
   /// blanca, y esa hoja encima del mapa tapa el terreno. Por eso, si se pasa
   /// [destinoSinFondo], se escribe ahi una segunda copia **sin el papel**, con
-  /// solo las lineas. Devuelve si esa copia se hizo: no se hace cuando el
-  /// plano no tiene un papel que quitar -una ortofoto, o un plano que ya venia
-  /// transparente-.
-  Future<bool> dibujar({
+  /// solo las lineas. El resultado dice si esa copia se hizo: no se hace
+  /// cuando el plano no tiene un papel que quitar -una ortofoto, o un plano
+  /// que ya venia transparente-.
+  ///
+  /// Con [papel] -rojo, verde y azul- no se busca el color del papel: se usa
+  /// ese. Es para los cuadros de detalle, que tienen que quitar todos el
+  /// mismo papel que se encontro mirando la hoja entera.
+  Future<Dibujo> dibujar({
     required String ruta,
     required int pagina,
     required double x,
@@ -75,6 +79,7 @@ class MotorPlanos {
     required int altoPx,
     required String destino,
     String? destinoSinFondo,
+    List<int>? papel,
   }) async {
     final r = await _llamar<Map<Object?, Object?>>('dibujar', {
       'ruta': ruta,
@@ -87,14 +92,24 @@ class MotorPlanos {
       'altoPx': altoPx,
       'destino': destino,
       'destinoSinFondo': destinoSinFondo,
+      'papel': papel,
     });
-    return r?['sinFondo'] == true;
+    final encontrado = r?['papel'];
+    return Dibujo(
+      sinFondo: r?['sinFondo'] == true,
+      papel: encontrado is List && encontrado.length == 3
+          ? [for (final c in encontrado) (c as num).toInt()]
+          : null,
+    );
   }
 
   /// Los errores del lado nativo llegan con un codigo; aca se convierten en el
   /// mismo [GeoPdfInvalido] que usa el lector, para que la pantalla tenga un
   /// solo tipo de falla que mostrar.
-  Future<T?> _llamar<T>(String metodo, [Map<String, Object?>? argumentos]) async {
+  Future<T?> _llamar<T>(
+    String metodo, [
+    Map<String, Object?>? argumentos,
+  ]) async {
     try {
       return await _canal.invokeMethod<T>(metodo, argumentos);
     } on PlatformException catch (e) {
@@ -131,6 +146,18 @@ class PdfElegido {
 
   /// Como se llamaba el archivo donde estaba: "Vias Meta 2026.pdf".
   final String nombre;
+}
+
+/// Lo que dejo un dibujado.
+class Dibujo {
+  const Dibujo({required this.sinFondo, this.papel});
+
+  /// Si se escribio la copia sin el papel.
+  final bool sinFondo;
+
+  /// El color del papel que se quito -rojo, verde y azul-, o nulo si el
+  /// plano no tiene papel.
+  final List<int>? papel;
 }
 
 /// Una hoja del PDF segun el motor que la dibuja.

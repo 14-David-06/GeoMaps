@@ -18,8 +18,22 @@ import '../state/sesion.dart';
 /// El interruptor Entrar / Crear cuenta cambia el formulario en el lugar, sin
 /// navegar a otra pantalla: con una sola ventana de senal, mandar a alguien a
 /// una segunda pantalla es una oportunidad de perderla.
+///
+/// Con [reingreso] es la misma pantalla abierta desde adentro, por quien tiene
+/// la sesion vencida: lleva una flecha para volver sin entrar -sigue pudiendo
+/// trabajar en el telefono- y se cierra sola en cuanto la sesion queda al dia.
 class LoginPage extends ConsumerStatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage({this.reingreso = false, super.key});
+
+  /// Si la abrio alguien que ya esta adentro, para renovar una sesion vencida.
+  final bool reingreso;
+
+  /// Abre el ingreso encima de lo que haya, para volver a entrar.
+  static Future<void> abrirParaReingresar(BuildContext context) {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const LoginPage(reingreso: true)),
+    );
+  }
 
   @override
   ConsumerState<LoginPage> createState() => _LoginPageState();
@@ -77,7 +91,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final colores = Theme.of(context).colorScheme;
     final cargando = estado.cargando;
 
+    if (widget.reingreso) {
+      // Entro: esta pantalla ya no tiene nada que hacer encima del inicio.
+      ref.listen<EstadoSesion>(sesionProvider, (antes, ahora) {
+        if (ahora.autenticado && mounted) Navigator.of(context).maybePop();
+      });
+    }
+
     return Scaffold(
+      appBar: widget.reingreso
+          ? AppBar(title: const Text('Entrar de nuevo'))
+          : null,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -96,7 +120,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Tus mapas del predio, sin senal',
+                    widget.reingreso
+                        ? 'Tu sesion vencio. Lo que hiciste sigue guardado en '
+                              'este telefono, y sube cuando entres.'
+                        : 'Tus mapas del predio, sin senal',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: colores.onSurfaceVariant),
                   ),
@@ -203,6 +230,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       ],
                     ),
                   ),
+                  // El error va aca, pegado al boton que lo causo, y no al
+                  // pie de la pantalla: abajo de todo quedaba fuera de la
+                  // vista y parecia que tocar Entrar no hacia nada.
+                  if (estado.error != null) ...[
+                    const SizedBox(height: 16),
+                    _CartelError(texto: estado.error!),
+                  ],
                   const SizedBox(height: 22),
 
                   SizedBox(
@@ -275,39 +309,46 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     onPressed: () => Enlaces.abrir(Enlaces.privacidad),
                     child: const Text('Politica de privacidad'),
                   ),
-
-                  if (estado.error != null) ...[
-                    const SizedBox(height: 24),
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: colores.errorContainer,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.error_outline,
-                            color: colores.onErrorContainer,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              estado.error!,
-                              style: TextStyle(color: colores.onErrorContainer),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Por que no se pudo entrar, en las palabras que mando el servidor.
+class _CartelError extends StatelessWidget {
+  const _CartelError({required this.texto});
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    final colores = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colores.errorContainer,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline, color: colores.onErrorContainer, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              texto,
+              style: TextStyle(
+                color: colores.onErrorContainer,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

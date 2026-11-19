@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'capa_acopios.dart' show colorAcopio;
 import 'capa_vias.dart' show LeyendaVias;
-import 'mapa_page.dart' show CapaBase;
+import 'mapa/capa_base.dart';
 
 /// Las capas del predio que se encienden y apagan desde el panel.
 ///

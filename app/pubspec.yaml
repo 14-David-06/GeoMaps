@@ -78,8 +78,10 @@ dependencies:
   share_plus: ^12.0.2
 
   # --- Entregables -------------------------------------------------------
+  # El informe PDF se arma con `pdf`, que es Dart puro, y sale por la hoja
+  # de compartir del telefono como los demas archivos. `printing` no hace
+  # falta: desde el visor de PDF de cualquier telefono se imprime.
   pdf: ^3.13.0
-  printing: ^5.15.0
 
   # --- Varios ------------------------------------------------------------
   intl: ^0.20.3
@@ -95,6 +97,14 @@ dependencies:
   # Leer el QR de vueltas pendientes que imprime SiriusFleet. Usa ML Kit del
   # telefono, sin red: el QR se escanea en el patio, donde la senal es poca.
   mobile_scanner: ^7.4.2
+
+  # --- Voz ---------------------------------------------------------------
+  # La voz de las indicaciones: "en 150 metros, gira a la derecha". Usa el
+  # sintetizador del telefono, que funciona sin red si la voz en espanol esta
+  # instalada. Para quien maneja con las manos en el volante, y para quien no
+  # alcanza a leer la pantalla.
+  flutter_tts: ^4.2.5
+  image_picker: ^1.2.4
 
 dev_dependencies:
   flutter_test:

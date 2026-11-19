@@ -187,7 +187,53 @@ def _borrar_lote(s3, bucket: str, objetos: list[dict]) -> int:
     return len(objetos)
 
 
-# TODO: url_escritura(llave, content_type) -> URL prefirmada PUT
+def url_escritura(
+    settings: Settings, llave: str, content_type: str, ttl: int | None = None
+) -> str:
+    """URL prefirmada de PUT. Se arma localmente, sin llamar a AWS.
+
+    Es por donde sube lo pesado directo desde el telefono. El tipo de
+    contenido va firmado: quien la use tiene que mandar ese mismo
+    `Content-Type`, o S3 la rechaza. El tamano no se puede firmar en un PUT,
+    asi que quien la pide lo revisa despues con `tamano`.
+    """
+    return cliente(settings).generate_presigned_url(
+        "put_object",
+        Params={
+            "Bucket": settings.s3_bucket,
+            "Key": llave,
+            "ContentType": content_type,
+        },
+        ExpiresIn=ttl or settings.s3_ttl_escritura,
+    )
+
+
+def tamano(settings: Settings, llave: str) -> int | None:
+    """Cuantos bytes pesa un objeto, o None si no existe. Es tambien la forma
+    de saber si lo que el telefono dijo que subio de verdad llego."""
+    try:
+        r = cliente(settings).head_object(Bucket=settings.s3_bucket, Key=llave)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
+            return None
+        raise
+    return int(r["ContentLength"])
+
+
+def borrar(settings: Settings, llave: str) -> None:
+    """Borra un objeto. Con el bucket versionado deja una marca de borrado;
+    las versiones viejas las expira la regla de ciclo de vida."""
+    cliente(settings).delete_object(Bucket=settings.s3_bucket, Key=llave)
+
+
+def llave_foto(codigo_proyecto: str, codigo_waypoint: str, codigo_foto: str) -> str:
+    """Donde vive la foto de un punto marcado.
+
+    Cuelga del proyecto, como todo, para que borrar el proyecto -o la cuenta-
+    se la lleve; y del punto, para encontrar las de un punto sin consultar
+    Airtable.
+    """
+    return f"proyectos/{codigo_proyecto}/fotos/{codigo_waypoint}/{codigo_foto}.jpg"
 
 
 def llave_geometria(codigo_proyecto: str, codigo_trazado: str) -> str:

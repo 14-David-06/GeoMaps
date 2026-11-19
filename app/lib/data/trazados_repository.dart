@@ -76,6 +76,7 @@ class TrazadosRepository {
     required String nombre,
     required List<PuntoGeo> linea,
     required double metros,
+    String proyectoCodigo = MapasRepository.proyectoLocal,
   }) {
     if (linea.length < 2) {
       throw ArgumentError('Una ruta necesita al menos dos puntos.');
@@ -89,7 +90,7 @@ class TrazadosRepository {
         .insertReturning(
           TrazadosCompanion.insert(
             codigo: _uuid.v4(),
-            proyectoCodigo: MapasRepository.proyectoLocal,
+            proyectoCodigo: proyectoCodigo,
             nombre: limpio.isEmpty ? 'Ruta sin nombre' : limpio,
             tipo: TipoTrazado.ruta.name,
             metodo: MetodoCaptura.calculada.name,
@@ -156,6 +157,7 @@ class TrazadosRepository {
     required String usuarioCodigo,
     required String nombre,
     required List<PuntoGeo> vertices,
+    String proyectoCodigo = MapasRepository.proyectoLocal,
   }) {
     if (vertices.length < 3) {
       throw ArgumentError('Un poligono necesita al menos tres vertices.');
@@ -172,7 +174,7 @@ class TrazadosRepository {
         .insertReturning(
           TrazadosCompanion.insert(
             codigo: _uuid.v4(),
-            proyectoCodigo: MapasRepository.proyectoLocal,
+            proyectoCodigo: proyectoCodigo,
             nombre: limpio.isEmpty ? 'Area sin nombre' : limpio,
             tipo: TipoTrazado.poligono.name,
             metodo: MetodoCaptura.manual.name,
@@ -298,6 +300,7 @@ class TrazadosRepository {
     required String usuarioCodigo,
     required String nombre,
     Map<String, Object?> propiedades = const {},
+    String proyectoCodigo = MapasRepository.proyectoLocal,
   }) {
     final ahora = DateTime.now();
     return _db
@@ -305,7 +308,7 @@ class TrazadosRepository {
         .insertReturning(
           TrazadosCompanion.insert(
             codigo: _uuid.v4(),
-            proyectoCodigo: MapasRepository.proyectoLocal,
+            proyectoCodigo: proyectoCodigo,
             nombre: nombre,
             tipo: TipoTrazado.ruta.name,
             metodo: MetodoCaptura.automatico.name,

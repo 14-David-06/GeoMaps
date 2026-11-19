@@ -5,13 +5,18 @@ import '../camiones/camiones_page.dart';
 import '../core/api_client.dart';
 import '../core/enlaces.dart';
 import '../core/ubicacion.dart';
+import '../state/errores.dart';
+import '../state/fotos.dart';
+import '../state/proyecto_activo.dart';
 import '../state/providers.dart';
 import '../state/red.dart';
 import '../state/sesion.dart';
 import '../state/sincronizador.dart';
 import '../state/ubicacion_provider.dart';
 import 'actualizacion_page.dart';
+import 'cerrar_sesion.dart';
 import 'descargar_region_page.dart';
+import 'login_page.dart';
 import 'mapa_guaicaramo.dart';
 import 'mapa_page.dart';
 import 'proyectos_page.dart';
@@ -37,6 +42,9 @@ class HomePage extends ConsumerWidget {
     // Lo que sube solo al volver la red. Se engancha aca porque el inicio queda
     // debajo de todas las pantallas mientras haya sesion.
     ref.watch(sincronizacionAutomaticaProvider);
+    // Y lo que rescata la foto que quedo en el aire si Android cerro la app
+    // con la camara abierta.
+    ref.watch(fotoPerdidaProvider);
     // Solo pasa durante el parpadeo entre cerrar sesion y que la puerta
     // reemplace esta pantalla por el login.
     if (sesion == null) return const SizedBox.shrink();
@@ -60,6 +68,7 @@ class HomePage extends ConsumerWidget {
             _Saludo(nombre: sesion.nombre),
             const SizedBox(height: 16),
             const AvisoActualizacion(),
+            if (sesion.vencida) const _SesionVencida(),
             const _Estado(),
             const SizedBox(height: 24),
             Text(
@@ -110,13 +119,27 @@ class HomePage extends ConsumerWidget {
                 subtitle: Text(sesion.correo),
               ),
               const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.schedule),
-                title: Text('Sesion valida ${sesion.diasRestantes} dias mas'),
-                subtitle: const Text(
-                  'Podes trabajar sin senal durante ese plazo.',
+              if (sesion.vencida)
+                ListTile(
+                  leading: const Icon(Icons.lock_clock),
+                  title: const Text('La sesion vencio'),
+                  subtitle: const Text(
+                    'Podes seguir trabajando en este telefono. Para subir lo '
+                    'que hagas, toca aca y entra de nuevo con senal.',
+                  ),
+                  onTap: () {
+                    Navigator.pop(hoja);
+                    LoginPage.abrirParaReingresar(context);
+                  },
+                )
+              else
+                ListTile(
+                  leading: const Icon(Icons.schedule),
+                  title: Text('Sesion valida ${sesion.diasRestantes} dias mas'),
+                  subtitle: const Text(
+                    'Podes trabajar sin senal durante ese plazo.',
+                  ),
                 ),
-              ),
               ListTile(
                 leading: const Icon(Icons.manage_accounts_outlined),
                 title: const Text('Actualizar mi cuenta'),
@@ -152,7 +175,7 @@ class HomePage extends ConsumerWidget {
                 title: const Text('Cerrar sesion'),
                 onTap: () {
                   Navigator.pop(hoja);
-                  ref.read(sesionProvider.notifier).salir();
+                  cerrarSesion(context, ref);
                 },
               ),
               ListTile(
@@ -203,9 +226,15 @@ class _DialogoBajaState extends ConsumerState<_DialogoBaja> {
       _error = null;
     });
     try {
+      final errores = ref.read(registroErroresProvider);
+      final archivos = ref.read(archivosRepositoryProvider);
       await ref
           .read(sesionProvider.notifier)
           .eliminarCuenta(ref.read(dbProvider));
+      // Lo guardado en el telefono se va con la cuenta, y los informes de
+      // error tambien: el servidor ya borro los que habian subido.
+      await errores?.vaciar();
+      await archivos.borrarArchivosDeFotos();
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
@@ -256,6 +285,71 @@ class _DialogoBajaState extends ConsumerState<_DialogoBaja> {
           child: const Text('Eliminar'),
         ),
       ],
+    );
+  }
+}
+
+/// El aviso de que la sesion vencio.
+///
+/// Va arriba y pintado porque cambia lo que la persona puede esperar de la
+/// jornada: todo lo que haga queda en el telefono y nada sube. Dice las dos
+/// cosas que hay que saber -que puede seguir, y que hace falta para subir- y
+/// tiene el boton ahi mismo, porque el rato con senal es corto.
+class _SesionVencida extends StatelessWidget {
+  const _SesionVencida();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Material(
+        // Solido y no translucido, como los avisos de estado: se lee al sol.
+        color: ColoresEstado.aviso,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.lock_clock, color: Colors.white),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Tu sesion vencio',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Podes seguir trabajando: todo queda guardado en este '
+                'telefono. Para subirlo, entra de nuevo cuando tengas senal.',
+                style: TextStyle(color: Colors.white, height: 1.35),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: ColoresEstado.aviso,
+                  ),
+                  onPressed: () => LoginPage.abrirParaReingresar(context),
+                  icon: const Icon(Icons.login),
+                  label: const Text('Entrar de nuevo'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -347,13 +441,19 @@ class _Estado extends ConsumerWidget {
     );
 
     final dias = sesion?.diasRestantes ?? 0;
-    final estadoSesion = _Chip(
-      icono: Icons.schedule,
-      texto: dias == 1 ? '1 dia' : '$dias dias',
-      // Por debajo de una semana hay que avisar, antes de que alguien salga a
-      // una semana de campo creyendo que tiene mes.
-      color: dias <= 7 ? ColoresEstado.aviso : ColoresEstado.neutro,
-    );
+    final estadoSesion = sesion?.vencida ?? false
+        ? const _Chip(
+            icono: Icons.lock_clock,
+            texto: 'Sesion vencida',
+            color: ColoresEstado.aviso,
+          )
+        : _Chip(
+            icono: Icons.schedule,
+            texto: dias == 1 ? '1 dia' : '$dias dias',
+            // Por debajo de una semana hay que avisar, antes de que alguien
+            // salga a una semana de campo creyendo que tiene mes.
+            color: dias <= 7 ? ColoresEstado.aviso : ColoresEstado.neutro,
+          );
 
     return Wrap(
       spacing: 8,
@@ -481,10 +581,14 @@ class _Accesos extends ConsumerWidget {
         _Tarjeta(
           icono: Icons.folder_outlined,
           titulo: 'Proyectos',
-          detalle: cuantos.maybeWhen(
-            data: (n) => n == 1 ? '1 proyecto' : '$n proyectos',
-            orElse: () => 'Abrir',
-          ),
+          // El que esta en uso, si hay: es donde va a caer lo que se
+          // levante hoy, y conviene verlo antes de salir.
+          detalle:
+              ref.watch(proyectoActivoProvider).valueOrNull?.nombre ??
+              cuantos.maybeWhen(
+                data: (n) => n == 1 ? '1 proyecto' : '$n proyectos',
+                orElse: () => 'Abrir',
+              ),
           alTocar: () => _ir(context, const ProyectosPage()),
         ),
       if (plantacion)
@@ -608,14 +712,20 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (foto != null) {
-      return CircleAvatar(radius: 16, backgroundImage: NetworkImage(foto!));
-    }
-    // Sin foto, la inicial. Un icono generico hace que todas las cuentas se
-    // vean iguales en un telefono que pasa de mano en mano.
+    // La inicial va siempre, y la foto encima cuando carga. La foto es la de
+    // Google y vive en internet: sin senal no llega, y un circulo vacio no
+    // dice de quien es la cuenta. Un icono generico tampoco: hace que todas
+    // se vean iguales en un telefono que pasa de mano en mano.
     final limpio = nombre.trim();
     final inicial = limpio.isEmpty ? '?' : limpio[0].toUpperCase();
-    return CircleAvatar(radius: 16, child: Text(inicial));
+    final foto = this.foto;
+    return CircleAvatar(
+      radius: 16,
+      foregroundImage: foto == null ? null : NetworkImage(foto),
+      // Que la foto no baje no es un error: queda la inicial.
+      onForegroundImageError: foto == null ? null : (_, _) {},
+      child: Text(inicial),
+    );
   }
 }
 

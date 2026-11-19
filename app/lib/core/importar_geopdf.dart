@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:latlong2/latlong.dart';
 
+import 'detalle_plano.dart';
 import 'geopdf.dart';
 import 'motor_planos.dart';
 
@@ -31,8 +32,12 @@ import 'motor_planos.dart';
 /// acercarse y mas memoria **cada vez que la capa esta encendida**, porque la
 /// imagen se abre entera. El tope es el lado mas largo que una pantalla de
 /// telefono sabe mostrar de una sola pieza; una hoja cartografica grande queda
-/// con menos puntos por pulgada que una de topografia, y para verla nitida de
-/// cerca sigue haciendo falta convertirla desde el computador.
+/// con menos puntos por pulgada que una de topografia.
+///
+/// Por eso a las hojas grandes se les hace ademas un **detalle**: la misma
+/// hoja, mas grande, partida en cuadros ([DetallePlano]). Se dibuja despues,
+/// con el plano ya puesto en el mapa ([afinar]), y de cerca se ven solo los
+/// cuadros que entran en la pantalla.
 class ImportadorGeoPdf {
   /// El detalle que se busca. Deja legibles los rotulos de un plano al
   /// acercarse, y solo se alcanza en hojas de hasta medio pliego.
@@ -73,7 +78,7 @@ class ImportadorGeoPdf {
     // una a otra, y volver a dibujarlo seria pedirle que lo importe de nuevo.
     final conFondo = File('${destino.path}/$codigo.png');
     final sinFondo = File(ArchivosPlano.sinFondo(conFondo.path));
-    final hayLineas = await motor.dibujar(
+    final dibujo = await motor.dibujar(
       ruta: pdf.path,
       pagina: geo.indicePagina,
       x: marco.x,
@@ -85,9 +90,10 @@ class ImportadorGeoPdf {
       destino: conFondo.path,
       destinoSinFondo: sinFondo.path,
     );
+    final hayLineas = dibujo.sinFondo;
 
-    final bytes =
-        conFondo.lengthSync() + (hayLineas ? sinFondo.lengthSync() : 0);
+    final bytesConFondo = conFondo.lengthSync();
+    final bytes = bytesConFondo + (hayLineas ? sinFondo.lengthSync() : 0);
     return PlanoImportado(
       // Queda puesta la copia sin papel: lo que se quiere ver encima del mapa
       // son las lineas del plano, no una hoja blanca tapando el terreno.
@@ -97,7 +103,117 @@ class ImportadorGeoPdf {
       alto: marco.altoPx,
       megas: bytes / 1048576,
       aviso: geo.aviso,
+      detalle: _detalle(
+        marco,
+        anchoPt: geo.recorte.ancho,
+        altoPt: geo.recorte.alto,
+        pagina: geo.indicePagina,
+        dibujo: dibujo,
+        bytesConFondo: bytesConFondo,
+      ),
     );
+  }
+
+  /// Por encima de esto, la imagen entera pesa como una foto y no como un
+  /// dibujo: bytes por pixel del PNG.
+  static const pesoDeFoto = 0.9;
+
+  /// El detalle que hay que hacerle al plano, o nulo si no le hace falta.
+  ///
+  /// No se le hace a una hoja que ya salio con todo su detalle, ni a una
+  /// **ortofoto o un plano escaneado**: sus cuadros pesan diez veces lo que
+  /// los de un dibujo -mas de cien megas por plano- y un telefono de campo no
+  /// tiene ese lugar. Se los reconoce porque su imagen entera pesa como una
+  /// foto; un plano dibujado, con sus lineas sobre papel liso, pesa muy poco.
+  static DetallePlano? _detalle(
+    Encuadre marco, {
+    required double anchoPt,
+    required double altoPt,
+    required int pagina,
+    required Dibujo dibujo,
+    required int bytesConFondo,
+  }) {
+    final esFoto = bytesConFondo / (marco.anchoPx * marco.altoPx) > pesoDeFoto;
+    if (esFoto) return null;
+    return DetallePlano.para(
+      anchoPt: anchoPt,
+      altoPt: altoPt,
+      anchoVista: marco.anchoPx,
+      altoVista: marco.altoPx,
+    )?.conTrabajo(
+      TrabajoDeDetalle(
+        pagina: pagina,
+        x: marco.x,
+        y: marco.y,
+        ancho: marco.ancho,
+        alto: marco.alto,
+        lineas: dibujo.sinFondo,
+        papel: dibujo.papel,
+      ),
+    );
+  }
+
+  /// Dibuja los cuadros de detalle que le faltan a un plano.
+  ///
+  /// Va despues de [importar] y aparte, porque tarda: son decenas de
+  /// dibujados, y el plano ya esta en el mapa mientras tanto. Cada cuadro que
+  /// termina queda anotado en el indice, asi que si la app se cierra en la
+  /// mitad no se pierde lo hecho y se puede seguir.
+  ///
+  /// [rutaVista] es la imagen del plano; [pdf] el archivo del que sale.
+  /// [seguir] se consulta antes de cada cuadro: en cuanto dice que no, se
+  /// corta ahi y queda para retomar. Devuelve el detalle como quedo.
+  ///
+  /// Si un cuadro no se puede dibujar la falla sale tal cual: lo hecho hasta
+  /// ahi ya esta guardado, y decidir que se hace con el resto es de quien
+  /// llama.
+  static Future<DetallePlano> afinar({
+    required String rutaVista,
+    required DetallePlano detalle,
+    required File pdf,
+    MotorPlanos motor = const MotorPlanos(),
+    bool Function()? seguir,
+    void Function(DetallePlano detalle)? alAvanzar,
+  }) async {
+    final trabajo = detalle.trabajo;
+    if (trabajo == null) return detalle;
+
+    await Directory(DetallePlano.carpetaDe(rutaVista)).create(recursive: true);
+    // Los nombres de los cuadros salen de la copia con papel; la de las
+    // lineas es esa misma con su sufijo.
+    final base = ArchivosPlano.conFondo(rutaVista);
+    final porPixelX = trabajo.ancho / detalle.ancho;
+    final porPixelY = trabajo.alto / detalle.alto;
+
+    var actual = detalle;
+    for (final i in detalle.pendientes()) {
+      if (seguir != null && !seguir()) return actual;
+      final p = actual.pixeles(i);
+      final destino = actual.archivoDe(base, i);
+      await motor.dibujar(
+        ruta: pdf.path,
+        pagina: trabajo.pagina,
+        x: trabajo.x + p.x * porPixelX,
+        y: trabajo.y + p.y * porPixelY,
+        ancho: p.ancho * porPixelX,
+        alto: p.alto * porPixelY,
+        anchoPx: p.ancho,
+        altoPx: p.alto,
+        destino: destino,
+        destinoSinFondo: trabajo.lineas
+            ? ArchivosPlano.sinFondo(destino)
+            : null,
+        papel: trabajo.papel,
+      );
+      actual = actual.conListo(i);
+      await actual.guardar(rutaVista);
+      alAvanzar?.call(actual);
+    }
+
+    actual = actual.conTrabajo(null);
+    await actual.guardar(rutaVista);
+    alAvanzar?.call(actual);
+    return actual;
   }
 
   /// Va en una funcion aparte a proposito: lo que se manda al isolate es el
@@ -202,10 +318,15 @@ class PlanoImportado {
     required this.alto,
     required this.megas,
     this.aviso,
+    this.detalle,
   });
 
   /// El PNG recortado, en la carpeta de la app.
   final String ruta;
+
+  /// El detalle que le falta hacer, si la hoja es grande. Nulo si con la
+  /// imagen entera alcanza.
+  final DetallePlano? detalle;
 
   /// Noroeste, noreste, sureste, suroeste.
   final List<LatLng> esquinas;

@@ -1,0 +1,86 @@
+# Corre las pruebas de la app y del backend en cada push a main y en cada
+# pull request. No compila el APK ni despliega nada: avisa si algo se rompio
+# antes de que llegue a un telefono.
+#
+# Lo que NO hay en esta maquina, y por eso las pruebas no pueden depender de
+# ello:
+#
+# - Los datos del predio (app/assets/zonas/*.json), que son confidenciales y
+#   no estan en el repositorio. Las pruebas que los necesitan se saltean solas.
+# - app/dart_defines.json y backend/.env: ninguna llave. El backend corre con
+#   sus valores por defecto y con Airtable y S3 reemplazados en memoria.
+
+name: Pruebas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Un push nuevo sobre la misma rama cancela la corrida anterior: su resultado
+# ya no le sirve a nadie.
+concurrency:
+  group: pruebas-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: App (Flutter)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      # La base local de las pruebas es SQLite de verdad, en memoria, y en
+      # Linux se carga del sistema.
+      - name: SQLite
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      # La misma version con la que se compila el APK. Subirla aca es parte de
+      # subirla en la maquina de quien publica.
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.2
+          cache: true
+
+      - name: Dependencias
+        run: flutter pub get
+
+      # El codigo que genera drift (*.g.dart) no esta en el repositorio.
+      - name: Codigo generado
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Analisis
+        run: flutter analyze
+
+      - name: Pruebas
+        run: flutter test
+
+  backend:
+    name: Backend (FastAPI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: backend/.python-version
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Dependencias
+        run: pip install -e ".[dev]"
+
+      - name: Pruebas
+        run: pytest -q

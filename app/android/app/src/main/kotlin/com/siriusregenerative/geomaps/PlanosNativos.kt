@@ -157,6 +157,12 @@ class PlanosNativos(
      *
      * El mapa de bits no se pinta de blanco antes: lo que el PDF no dibuja
      * queda transparente, y eso deja ver el satelital por debajo del plano.
+     *
+     * El color del papel se puede recibir ya decidido (`papel`). Es para los
+     * cuadros de detalle de un plano grande: cada uno es un pedazo de la hoja,
+     * y si cada pedazo eligiera su papel por su cuenta, uno lleno de relleno
+     * no encontraria ninguno y quedaria opaco al lado de sus vecinos. El papel
+     * se decide una vez, mirando la hoja entera, y de ahi en mas se dice.
      */
     private fun dibujar(call: MethodCall): Map<String, Any?> {
         val ruta = call.argument<String>("ruta")!!
@@ -169,6 +175,9 @@ class PlanosNativos(
         val altoPx = call.argument<Int>("altoPx")!!
         val destino = File(call.argument<String>("destino")!!)
         val destinoSinFondo = call.argument<String>("destinoSinFondo")?.let { File(it) }
+        val papelDado = call.argument<List<Int>>("papel")
+            ?.takeIf { it.size == 3 }
+            ?.toIntArray()
 
         return abrir(ruta) { lector ->
             lector.openPage(pagina).use { h ->
@@ -185,13 +194,17 @@ class PlanosNativos(
                     // mapa de bits, despues de haber guardado la primera, para
                     // no tener dos hojas enteras en memoria a la vez.
                     var sinFondo = false
-                    val fondo = if (destinoSinFondo == null) null else colorDelPapel(mapa)
+                    val fondo = if (destinoSinFondo == null) {
+                        null
+                    } else {
+                        papelDado ?: colorDelPapel(mapa)
+                    }
                     if (fondo != null && destinoSinFondo != null) {
                         quitarPapel(mapa, fondo)
                         guardar(mapa, destinoSinFondo)
                         sinFondo = true
                     }
-                    mapOf("sinFondo" to sinFondo)
+                    mapOf("sinFondo" to sinFondo, "papel" to fondo?.toList())
                 } finally {
                     mapa.recycle()
                 }

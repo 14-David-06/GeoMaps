@@ -102,6 +102,22 @@ android {
     }
 }
 
+// Solo las arquitecturas de telefonos de verdad. `--target-platform` saca el
+// x86_64 de Flutter, pero los plugins con codigo nativo (el lector de QR,
+// SQLite) traen el suyo igual: otros 7 MB que ningun telefono usa y que cada
+// actualizacion bajaria por senal rural.
+//
+// Se saca al empaquetar y solo en release: el emulador, que si es x86_64,
+// corre la compilacion de debug. No sirve un `abiFilters` en el buildType
+// porque el plugin de Flutter pone los suyos en defaultConfig -con x86_64
+// adentro- y Gradle une las dos listas en vez de reemplazar una por otra.
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variante ->
+        variante.packaging.jniLibs.excludes.add("**/x86_64/**")
+        variante.packaging.jniLibs.excludes.add("**/x86/**")
+    }
+}
+
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

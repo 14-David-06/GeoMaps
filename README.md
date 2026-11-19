@@ -37,11 +37,12 @@ la app nunca lo espera: el dato se guarda local primero y se sincroniza despues.
 | Mapas offline | **Cache de flutter_map** + **MBTiles** (pendiente) | La zona del satelite que se baja queda en la misma cache de la que el mapa lee sin senal; el MBTiles es el mapa pesado que trae el usuario, todavia sin implementar |
 | Reproyeccion | **proj4dart** | Un GeoPDF de topografia casi nunca viene en Web Mercator |
 | BD local | **Drift / SQLite** | Waypoints, trazados y el catalogo de capas. Fuente de verdad mientras no hay red |
-| GPS | **geolocator + flutter_foreground_task** | El trazado sigue grabando con la pantalla apagada |
+| GPS | **geolocator**, como servicio en primer plano mientras graba | El trazado sigue grabando con la pantalla apagada |
 | Geometria | `core/geo.dart` | Haversine y area sobre WGS84, portado de `sirius_agro` |
 | Ruteo | `core/ruteo.dart` | Grafo y Dijkstra sobre las vias del predio, adentro del telefono: en Guaicaramo no hay senal para consultarle la ruta a nadie, y ningun servicio de ruteo conoce las vias internas de una plantacion |
+| Voz | **flutter_tts** | El sintetizador del telefono, que habla sin red si la voz en espanol esta instalada. Quien maneja no puede leer la pantalla, y muchos de quienes usan la app no ven bien |
 | Export | `core/kml.dart`, `core/gpx.dart` | KML 2.2 y GPX 1.1 escritos a mano; son XML plano |
-| PDF | **pdf + printing** | Entregable impreso con la marca Sirius |
+| PDF | **pdf** | El informe de un levantamiento, armado en el telefono con las fuentes que trae el formato: sin red y sin empaquetar nada |
 | Identidad | **Correo + clave, o Google Sign-In** | Registro abierto por dos puertas. El backend verifica el ID token contra el JWKS de Google, o la clave contra un hash bcrypt, y guarda al usuario en Airtable: ningun proveedor de identidad extra. La puerta de clave existe porque Google Sign-In depende de los servicios de Google Play, que en los telefonos de campo no siempre estan sanos |
 | Backend | **FastAPI** en Vercel | Guarda las llaves y aisla los datos de cada cuenta. La app nunca ve el token de Airtable ni las de AWS |
 | Registro | **Airtable** | Usuarios, proyectos, mapas, trazados, waypoints y archivos generados |
@@ -81,6 +82,10 @@ dart run build_runner build --delete-conflicting-outputs   # genera drift
 flutter run --dart-define-from-file=dart_defines.json
 ```
 
+Cada push a `main` y cada pull request corren el analisis y las pruebas de
+la app y del backend en GitHub (`.github/workflows/pruebas.yml`). Corren sin
+los datos del predio y sin ninguna llave, igual que un clon recien hecho.
+
 Por defecto la app apunta al backend desplegado:
 `https://geo-maps-seven.vercel.app`. Para trabajar contra el backend local se
 cambia `API_BASE` en `dart_defines.json` (o se pasa
@@ -95,25 +100,35 @@ de Android ve el `localhost` de la maquina, y un celular fisico por USB usa
 | Que | Donde |
 |---|---|
 | Entrar con Google o con correo y clave; la sesion dura 30 dias y se renueva sola al abrir la app con senal | `state/sesion.dart`, `POST /v1/sesion/renovar` |
-| Mapa satelital y de calles con la posicion, la precision, la escala y el giro tipo navegador | `ui/mapa_page.dart` |
-| Mapa de Guaicaramo: lotes, vias, acopios, y ruta por las vias con recalculo | `core/ruteo.dart` |
+| Si la sesion vence estando sin senal, **la persona sigue adentro** y trabaja con lo que hay en el telefono; el inicio le avisa que nada sube hasta que entre de nuevo | `state/sesion.dart`, `ui/home_page.dart` |
+| Al cerrar sesion con registros sin subir o un recorrido abierto, avisa y ofrece subirlos ahi mismo | `ui/cerrar_sesion.dart` |
+| Letra grande y alto contraste en toda la app, para quien no ve bien: nada por debajo de 15, botones de 52 de alto, y ninguna pantalla se desborda con la letra del telefono al 130%. En el mapa, los botones se apoyan arriba de la tarjeta de abajo midiendola (`ui/mapa/medido.dart`): con la letra agrandada la tarjeta crece y antes los tapaba | `ui/theme.dart`, `test/letra_grande_test.dart` |
+| Mapa satelital y de calles con la posicion, la precision, la escala y el giro tipo navegador. La pantalla (`ui/mapa_page.dart`) decide que se dibuja y que tarjeta va abajo; lo demas esta en piezas sueltas en `ui/mapa/`: la camara que sigue a la posicion (`seguidor.dart`), la barra del GPS, los botones y las hojas de herramientas y de cuenta. La pantalla entera se abre en una prueba, con una ubicacion de mentira: que llegue el fix, que se trace y se suelte la ruta, y que al salir no quede nada colgado | `ui/mapa_page.dart`, `ui/mapa/`, `test/mapa_page_test.dart` |
+| Mapa de Guaicaramo: lotes, vias, acopios, y ruta por las vias con recalculo. La ruta del mapa -trazarla, seguirla, decirla, guardarla, calificarla- no necesita la pantalla para andar y tiene sus pruebas | `core/ruteo.dart`, `ui/mapa/navegacion.dart`, `test/navegacion_mapa_test.dart` |
 | Buscar un acopio por su numero y elegir el bloque con un toque, en letra grande y con el mas cercano primero | `ui/capa_acopios.dart` |
 | Planos de topografia y **PDF cartograficos** (vias, planchas) importados como capa: lee la georreferencia de Adobe y la de TerraGo, tambien en archivos comprimidos o de varias hojas, y al terminar encuadra el mapa sobre el plano | `core/geopdf.dart`, `ui/importar_mapa_page.dart` |
+| **Las hojas grandes se leen de cerca**: un pliego entra como una imagen de 4096 pixeles, que son menos de 90 puntos por pulgada y deja los rotulos hechos una mancha. A esas hojas se les dibuja ademas el **detalle** -la misma hoja al doble, en cuadros de 1024- de fondo, con el plano ya puesto en el mapa; de cerca se ponen solo los cuadros que caen en la pantalla. Si la app se cierra en la mitad, sigue la proxima vez. No se le hace a un plano que ya salio nitido ni a una ortofoto | `core/detalle_plano.dart`, `state/afinado.dart`, `ui/capa_pdf.dart` |
 | **Bajar una zona del satelite** para verla sin senal (necesita red para bajarla) | `ui/descargar_region_page.dart` |
 | Donde el satelite no tiene imagen del nivel pedido (el cartel "Map data not yet available") o no hay senal, el mapa muestra la del nivel anterior ampliada | `core/fuente_teselas.dart` |
+| **El mapa no espera a la red**: cada imagen aparece en el acto con lo que el telefono tenga guardado -aunque este vencida o sea la del nivel de arriba- y se cambia sola por la buena cuando la red contesta. Con una raya de senal abre igual de rapido que con wifi | `core/fuente_teselas.dart`, `ui/proveedor_teselas.dart` |
 | **Iniciar una ruta** y, al llegar o terminarla, **calificar** de 1 a 5 el camino por donde se paso; la nota queda con el recorrido grabado | `ui/calificar_ruta.dart` |
+| **Indicaciones habladas** en una ruta iniciada: el giro que viene ("en 150 metros, gira a la derecha"), cuanto falta y la llegada, con la voz del telefono y sin red. En una vuelta de camion avisa al llegar a los vagones y al volver. Se apaga con el parlante | `core/indicaciones.dart`, `core/voz.dart` |
 | **Grabar un recorrido** con la pantalla apagada, y verlo dibujarse | `state/grabacion.dart` |
+| **Proyectos**: se elige en cual se trabaja y lo que se levante -recorridos, areas, puntos y fotos- queda en ese, en el telefono y en Airtable. Se crean sin senal y suben antes que lo que cuelga de ellos | `state/proyecto_activo.dart`, `ui/proyectos_page.dart` |
 | **Marcar puntos** con simbolo y nota, con el GPS o a mano | `ui/waypoint_page.dart` |
+| **Fotos en los puntos**: se toman en el lote, achicadas para que suban por red rural, y se ven desde la tarjeta del punto. Suben solas despues de su punto, directo al bucket con una URL que firma el backend | `ui/fotos_punto.dart`, `data/archivos_repository.dart`, `POST /v1/fotos` |
 | **Medir** distancia y area sobre el mapa, y guardar el area | `ui/medicion.dart` |
 | **Compartir** recorridos, areas y puntos como KML, GPX o GeoJSON | `core/exportador.dart` |
+| **Informe PDF** de un area o un recorrido, para imprimir o mandar a quien no usa mapas: las medidas, la forma a escala con el norte, los puntos marcados y -como nota, no en letra chica- con que precision se levanto | `core/informe_pdf.dart` |
 | Subir recorridos, areas, rutas y puntos a Airtable y S3 al volver la red | `state/sincronizador.dart` |
+| Anotar en el telefono los fallos de la app -con la version y el modelo del telefono- y subirlos a la tabla `Errores` al volver la red | `core/errores.dart`, `POST /v1/errores` |
 | Camiones: escanear el QR y tomar una vuelta firmando solo con la clave (sin cedula). **Una vuelta a la vez**: hay que llegar a los vagones y volver al punto de salida para finalizarla, y hasta entonces no se toma otra. Cada paso -tomada, llegada, regreso, finalizada- queda en la tabla `Vueltas` (tomar y devolver necesitan senal; lo demas funciona sin ella) | `lib/camiones/`, `backend/app/services/viajes.py` |
 
 **Falta:**
 
 - **MBTiles** propios (el mapa pesado que convierte el backend) y su descarga.
-- Fotos en los puntos, y el **PDF** de entrega.
-- Proyectos como espejo del directorio de Airtable (`GET /v1/proyectos`).
+- Las fotos adentro de lo que se comparte (KMZ) y del informe PDF.
+- Bajar a un telefono los proyectos que ya estan en Airtable (`GET /v1/proyectos`): hoy suben, pero quien cambia de telefono no los ve.
 - Recuperacion de clave y verificacion de correo (ver `docs/arquitectura.md`).
 
 ## Autoria y propiedad

@@ -87,5 +87,11 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- La voz de las indicaciones (flutter_tts). Desde Android 11 una app
+             no ve los servicios de otras si no los declara, y sin esto el
+             telefono contesta que no tiene sintetizador de voz. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
     </queries>
 </manifest>

@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'core/errores.dart';
 import 'core/version_app.dart';
 import 'state/actualizacion.dart';
 import 'state/aviso_ubicacion.dart';
+import 'state/errores.dart';
 import 'state/providers.dart';
 import 'state/sesion.dart';
 import 'ui/actualizacion_page.dart';
@@ -22,16 +24,33 @@ import 'ui/theme.dart';
 /// que estar ahi.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final version = await _versionLocal();
+  // Antes que todo lo demas: lo que falle de aca en adelante queda anotado.
+  final errores = await _prepararErrores(version);
   // TODO: abrir la base drift y sembrar en el primer arranque.
   await _prepararCacheMapa();
   runApp(
     ProviderScope(
       overrides: [
-        versionLocalProvider.overrideWithValue(await _versionLocal()),
+        versionLocalProvider.overrideWithValue(version),
+        registroErroresProvider.overrideWithValue(errores),
       ],
       child: const GeoMapsApp(),
     ),
   );
+}
+
+/// El cuaderno de errores, en la carpeta de la app que Android no vacia. Sin
+/// carpeta no hay cuaderno, y la app abre igual.
+Future<RegistroErrores?> _prepararErrores(VersionLocal? version) async {
+  try {
+    return await engancharErrores(
+      await getApplicationSupportDirectory(),
+      version,
+    );
+  } catch (_) {
+    return null;
+  }
 }
 
 /// Cache en disco de las teselas del mapa base (satelite y calles).
@@ -96,7 +115,9 @@ class GeoMapsApp extends StatelessWidget {
 /// Decide entre actualizar, login y home.
 ///
 /// La decision se toma contra la sesion **guardada**, sin red. Pedir login en un
-/// potrero es pedirle a alguien que no trabaje.
+/// potrero es pedirle a alguien que no trabaje: por eso una sesion vencida
+/// tambien entra. El inicio le avisa que nada va a subir hasta que vuelva a
+/// entrar con senal, y la deja seguir con lo que tiene en el telefono.
 ///
 /// Una version bloqueada va antes que todo, con sesion o sin ella: lo que se
 /// hiciera en ella despues no podria sincronizarse.
@@ -111,10 +132,12 @@ class _Puerta extends ConsumerWidget {
     final estado = ref.watch(sesionProvider);
 
     // Solo mientras se lee el almacen seguro al arrancar. Dura milisegundos.
-    if (estado.cargando && estado.sesion == null && estado.error == null) {
+    // Un intento de entrar no pasa por aca: el ingreso se queda en pantalla
+    // con lo que la persona escribio, por si hay que corregir la clave.
+    if (estado.arrancando) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    if (!estado.autenticado) return const LoginPage();
+    if (estado.sesion == null) return const LoginPage();
 
     // El aviso va antes del inicio porque el inicio arranca el GPS, y el GPS
     // pide el permiso: el aviso tiene que llegar antes que el dialogo.

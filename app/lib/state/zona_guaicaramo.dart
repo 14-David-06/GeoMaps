@@ -101,10 +101,18 @@ const margenPlantacionM = 3000.0;
 /// Por cuanto tiempo vale haber estado adentro mientras el GPS no engancha.
 ///
 /// En las zonas apartadas, sin red, el primer fix puede tardar minutos o no
-/// llegar bajo palma. Si hace unas horas el telefono estuvo en la plantacion,
-/// sigue en ella: no se le puede pedir a alguien que salga a buscar cielo
-/// abierto para abrir el mapa de donde esta parado.
-const vigenciaRecuerdoAdentro = Duration(hours: 24);
+/// llegar bajo palma. Si hace poco el telefono estuvo en la plantacion, lo mas
+/// probable es que siga en ella: no se le puede pedir a alguien que salga a
+/// buscar cielo abierto para abrir el mapa de donde esta parado.
+///
+/// Son tres dias y no uno por el fin de semana: con un dia, quien trabajo el
+/// viernes encontraba el mapa cerrado el lunes temprano, sin internet, hasta
+/// que el GPS enganchaba. De viernes a la tarde a lunes a la manana son unas
+/// 62 horas.
+///
+/// El recuerdo solo vale mientras no hay un fix de ahora: en cuanto el GPS
+/// responde, si dice afuera, el mapa se cierra igual.
+const vigenciaRecuerdoAdentro = Duration(hours: 72);
 
 /// La ultima vez que el GPS en vivo ubico el telefono en la plantacion.
 ///

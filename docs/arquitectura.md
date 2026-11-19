@@ -16,6 +16,14 @@ Consecuencias directas:
 - **La sesion guardada manda.** Un JWT vence en una hora y refrescarlo necesita
   red. Exigir un token valido para abrir la app seria pedir login justo en el
   unico lugar donde no se puede hacer.
+- **Una sesion vencida tambien entra.** El JWT propio dura 30 dias y se renueva
+  solo cada vez que la app ve senal, asi que solo vence a quien paso un mes sin
+  cobertura: justo quien no puede volver a entrar. La app lo deja adentro,
+  trabajando con lo que hay en el telefono, y le avisa que nada sube hasta que
+  entre de nuevo (`EstadoSesion.vencida`). El servidor rechaza el token vencido
+  como siempre; lo que cambia es que el telefono no se bloquea. Lo unico que
+  saca a alguien de la app es cerrar sesion, o que la cuenta ya no exista o
+  este suspendida cuando se intenta renovar.
 
 ## Identidad: registro abierto
 

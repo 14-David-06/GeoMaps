@@ -11,6 +11,7 @@ import '../core/importar_geopdf.dart';
 import '../core/motor_planos.dart';
 import '../data/db/app_database.dart';
 import '../data/mapas_repository.dart';
+import '../state/afinado.dart';
 import '../state/providers.dart';
 
 /// Traer un plano en PDF al telefono y dejarlo como capa del mapa.
@@ -78,6 +79,26 @@ class _ImportarMapaPageState extends ConsumerState<ImportarMapaPage> {
             nombre: _nombreLegible(elegido.nombre),
             plano: plano,
           );
+
+      // Una hoja grande: el plano ya esta, y el detalle se le sigue dibujando
+      // de fondo mientras la persona vuelve al mapa. El afinador se queda con
+      // el PDF, que por eso ya no se borra aca abajo.
+      final detalle = plano.detalle;
+      if (detalle != null) {
+        try {
+          await ref
+              .read(afinadorProvider.notifier)
+              .empezar(
+                rutaVista: plano.ruta,
+                detalle: detalle,
+                pdf: File(elegido.ruta),
+                motor: widget.motor,
+              );
+        } catch (_) {
+          // Sin detalle el plano se ve igual, con su imagen entera: que no se
+          // pueda empezar a afinarlo no es un plano que no entro.
+        }
+      }
 
       if (!mounted) return;
       final aviso = plano.aviso;
@@ -271,6 +292,9 @@ class _FilaCapa extends ConsumerWidget {
     final megas = capa.tamanoMb;
     final esquinas = capa.esquinas;
     final ruta = capa.rutaLocal;
+    final afinando = ruta == null
+        ? null
+        : ref.watch(afinadorProvider)[Afinador.clave(ruta)];
 
     return Card(
       child: Padding(
@@ -298,6 +322,20 @@ class _FilaCapa extends ConsumerWidget {
                             : 'Plano importado · ${megas.toStringAsFixed(1)} MB',
                         style: const TextStyle(fontSize: 15),
                       ),
+                      // Una hoja grande se sigue afinando despues de entrar:
+                      // se dice, para que nadie crea que quedo borrosa.
+                      if (afinando != null && !afinando.terminado)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'Mejorando el detalle: ${afinando.listos.length} '
+                            'de ${afinando.total}. Ya se puede usar.',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -308,7 +346,7 @@ class _FilaCapa extends ConsumerWidget {
                 IconButton(
                   tooltip: 'Quitar del telefono',
                   icon: const Icon(Icons.delete_outline),
-                  onPressed: () => _confirmarBorrado(context, repo),
+                  onPressed: () => _confirmarBorrado(context, ref, repo),
                 ),
               ],
             ),
@@ -365,9 +403,9 @@ class _FilaCapa extends ConsumerWidget {
                       await repo.cambiarVisible(capa.codigo, true);
                     }
                     if (!context.mounted) return;
-                    Navigator.of(
-                      context,
-                    ).pop<List<LatLng>>(PlanoImportado.esquinasDeTexto(esquinas));
+                    Navigator.of(context).pop<List<LatLng>>(
+                      PlanoImportado.esquinasDeTexto(esquinas),
+                    );
                   },
                   icon: const Icon(Icons.center_focus_strong),
                   label: const Text('Ver en el mapa'),
@@ -381,6 +419,7 @@ class _FilaCapa extends ConsumerWidget {
 
   Future<void> _confirmarBorrado(
     BuildContext context,
+    WidgetRef ref,
     MapasRepository repo,
   ) async {
     final seguro = await showDialog<bool>(
@@ -404,6 +443,11 @@ class _FilaCapa extends ConsumerWidget {
         ],
       ),
     );
-    if (seguro ?? false) await repo.borrar(capa.codigo);
+    if (!(seguro ?? false)) return;
+    // Si todavia se le estaba dibujando el detalle, se corta antes de borrar
+    // la carpeta donde se escribe.
+    final ruta = capa.rutaLocal;
+    if (ruta != null) ref.read(afinadorProvider.notifier).olvidar(ruta);
+    await repo.borrar(capa.codigo);
   }
 }

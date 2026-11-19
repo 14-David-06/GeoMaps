@@ -11,6 +11,7 @@ import '../data/trazados_repository.dart';
 import 'gps.dart';
 import 'sesion.dart';
 import 'sincronizador.dart';
+import 'voz.dart';
 
 /// Lo que la pantalla muestra de la grabacion en curso.
 class EstadoGrabacion {
@@ -146,6 +147,7 @@ class Grabador extends StateNotifier<EstadoGrabacion> {
     PuntoGeo? destino,
     String? destinoNombre,
     Map<String, Object?> propiedades = const {},
+    String? proyectoCodigo,
   }) async {
     final usuario = _usuario;
     if (usuario == null) return;
@@ -159,11 +161,18 @@ class Grabador extends StateNotifier<EstadoGrabacion> {
       if (destino != null) 'destino': [destino.longitud, destino.latitud],
       'destino_nombre': destinoNombre,
     };
-    final fila = await _trazados.abrirGrabacion(
-      usuarioCodigo: usuario,
-      nombre: nombre,
-      propiedades: todas,
-    );
+    final fila = proyectoCodigo == null
+        ? await _trazados.abrirGrabacion(
+            usuarioCodigo: usuario,
+            nombre: nombre,
+            propiedades: todas,
+          )
+        : await _trazados.abrirGrabacion(
+            usuarioCodigo: usuario,
+            nombre: nombre,
+            propiedades: todas,
+            proyectoCodigo: proyectoCodigo,
+          );
     _puntos.clear();
     _precisiones.clear();
     _sinGuardar = 0;
@@ -359,6 +368,8 @@ final grabadorProvider = StateNotifierProvider<Grabador, EstadoGrabacion>((
     vigia: VigiaDeVueltas(
       avisar: (propiedades) =>
           unawaited(avisarSeguimiento(ref.read(apiProvider), propiedades)),
+      // Y se le dice al conductor, que va mirando la via y no la pantalla.
+      decir: (frase) => ref.read(locutorProvider).decir(frase),
     ),
   );
 });

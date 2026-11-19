@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/db/app_database.dart';
 import '../data/proyectos_repository.dart';
+import '../state/proyecto_activo.dart';
 import '../state/providers.dart';
 import '../state/sesion.dart';
 
@@ -22,6 +24,8 @@ class ProyectosPage extends ConsumerWidget {
     if (sesion == null) return const SizedBox.shrink();
 
     final proyectos = ref.watch(proyectosProvider(sesion.authUid));
+    // El proyecto en uso: bajo el se guarda lo que se levante.
+    final enUso = ref.watch(proyectoActivoProvider).valueOrNull;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Proyectos')),
@@ -33,14 +37,31 @@ class ProyectosPage extends ConsumerWidget {
       body: proyectos.when(
         data: (lista) => lista.isEmpty
             ? const _Vacio()
-            : ListView.separated(
+            : ListView(
                 padding: const EdgeInsets.only(bottom: 96),
-                itemCount: lista.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (_, i) => _Fila(
-                  resumen: lista[i],
-                  alArchivar: () => _archivar(context, ref, lista[i]),
-                ),
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: Text(
+                      'Toca el proyecto en el que vas a trabajar. Los '
+                      'recorridos, las areas y los puntos que levantes se '
+                      'guardan en el.',
+                    ),
+                  ),
+                  _SinProyecto(
+                    enUso: enUso == null,
+                    alElegir: () => _elegir(context, ref, null),
+                  ),
+                  for (final resumen in lista) ...[
+                    const Divider(height: 1),
+                    _Fila(
+                      resumen: resumen,
+                      enUso: enUso?.codigo == resumen.proyecto.codigo,
+                      alElegir: () => _elegir(context, ref, resumen.proyecto),
+                      alArchivar: () => _archivar(context, ref, resumen),
+                    ),
+                  ],
+                ],
               ),
         loading: () => const Center(child: CircularProgressIndicator()),
         // Un error aca es de la base local, no de la red. Se muestra crudo a
@@ -70,7 +91,7 @@ class ProyectosPage extends ConsumerWidget {
     );
     if (datos == null) return;
 
-    await ref
+    final creado = await ref
         .read(proyectosRepositoryProvider)
         .crear(
           duenoAuthUid: authUid,
@@ -80,6 +101,31 @@ class ProyectosPage extends ConsumerWidget {
         );
     // No hace falta refrescar nada: la lista escucha la tabla y se redibuja
     // sola en cuanto entra la fila.
+    //
+    // Queda en uso: un proyecto se crea porque se va a trabajar en el, y
+    // tener que tocarlo despues es un paso que se olvida.
+    if (context.mounted) await _elegir(context, ref, creado);
+  }
+
+  /// Deja [proyecto] como el que esta en uso, o ninguno con null, y lo dice.
+  Future<void> _elegir(
+    BuildContext context,
+    WidgetRef ref,
+    Proyecto? proyecto,
+  ) async {
+    final mensajero = ScaffoldMessenger.of(context);
+    await ref.read(proyectoElegidoProvider.notifier).elegir(proyecto?.codigo);
+    mensajero
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            proyecto == null
+                ? 'Lo que levantes ahora queda sin proyecto.'
+                : 'Lo que levantes ahora se guarda en "${proyecto.nombre}".',
+          ),
+        ),
+      );
   }
 
   Future<void> _archivar(
@@ -105,10 +151,71 @@ class ProyectosPage extends ConsumerWidget {
   }
 }
 
+/// La opcion de no usar ninguno: lo que se levante cae en "Sin proyecto",
+/// que es donde caia todo antes de que hubiera proyectos.
+class _SinProyecto extends StatelessWidget {
+  const _SinProyecto({required this.enUso, required this.alElegir});
+
+  final bool enUso;
+  final VoidCallback alElegir;
+
+  @override
+  Widget build(BuildContext context) {
+    final colores = Theme.of(context).colorScheme;
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      tileColor: enUso ? colores.primaryContainer : null,
+      leading: _Marca(enUso: enUso, icono: Icons.folder_off_outlined),
+      title: const Text(
+        'Sin proyecto',
+        style: TextStyle(fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(
+        enUso
+            ? 'En uso: lo que levantes queda suelto'
+            : 'Para lo que no es de ningun proyecto',
+      ),
+      onTap: alElegir,
+    );
+  }
+}
+
+/// El circulo de la izquierda: una tilde en el que esta en uso, que es lo
+/// que hay que encontrar de un vistazo, y el icono de siempre en los demas.
+class _Marca extends StatelessWidget {
+  const _Marca({required this.enUso, required this.icono});
+
+  final bool enUso;
+  final IconData icono;
+
+  @override
+  Widget build(BuildContext context) {
+    final colores = Theme.of(context).colorScheme;
+    return CircleAvatar(
+      backgroundColor: enUso
+          ? colores.primary
+          : colores.surfaceContainerHighest,
+      child: Icon(
+        enUso ? Icons.check : icono,
+        color: enUso ? colores.onPrimary : colores.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
 class _Fila extends StatelessWidget {
-  const _Fila({required this.resumen, required this.alArchivar});
+  const _Fila({
+    required this.resumen,
+    required this.enUso,
+    required this.alElegir,
+    required this.alArchivar,
+  });
 
   final ProyectoConResumen resumen;
+
+  /// Si es el proyecto en el que se esta trabajando.
+  final bool enUso;
+  final VoidCallback alElegir;
   final VoidCallback alArchivar;
 
   @override
@@ -127,10 +234,9 @@ class _Fila extends StatelessWidget {
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      leading: CircleAvatar(
-        backgroundColor: colores.primaryContainer,
-        child: Icon(Icons.folder_outlined, color: colores.onPrimaryContainer),
-      ),
+      tileColor: enUso ? colores.primaryContainer : null,
+      onTap: alElegir,
+      leading: _Marca(enUso: enUso, icono: Icons.folder_outlined),
       title: Text(
         p.nombre,
         style: const TextStyle(fontWeight: FontWeight.w600),
@@ -138,15 +244,13 @@ class _Fila extends StatelessWidget {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (lugar.isNotEmpty) Text(lugar),
-          Text(
-            mapas,
-            style: TextStyle(
-              color: resumen.mapasDescargados == 0
-                  ? colores.outline
-                  : colores.onSurfaceVariant,
+          if (enUso)
+            const Text(
+              'En uso: lo que levantes se guarda aca',
+              style: TextStyle(fontWeight: FontWeight.w700),
             ),
-          ),
+          if (lugar.isNotEmpty) Text(lugar),
+          Text(mapas, style: TextStyle(color: colores.onSurfaceVariant)),
         ],
       ),
       trailing: Row(
@@ -157,7 +261,11 @@ class _Fila extends StatelessWidget {
           if (!p.sincronizado)
             Tooltip(
               message: 'Falta subirlo',
-              child: Icon(Icons.cloud_off, size: 18, color: colores.outline),
+              child: Icon(
+                Icons.cloud_off,
+                size: 20,
+                color: colores.onSurfaceVariant,
+              ),
             ),
           IconButton(
             tooltip: 'Archivar',

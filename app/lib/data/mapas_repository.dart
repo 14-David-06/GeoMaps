@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/detalle_plano.dart';
 import '../core/importar_geopdf.dart';
 import '../ui/capa_pdf.dart';
 import 'db/app_database.dart';
@@ -182,9 +183,47 @@ class MapasRepository {
           // cuando limpie la cache de la app.
         }
       }
+      // Y el detalle, si es una hoja grande: son decenas de cuadros, y a
+      // veces el PDF del que salen.
+      final detalle = Directory(DetallePlano.carpetaDe(ruta));
+      if (detalle.existsSync()) {
+        try {
+          await detalle.delete(recursive: true);
+        } on FileSystemException {
+          // Igual que arriba: la fila se va de todos modos.
+        }
+      }
     }
 
     await (_db.delete(_db.mapas)..where((m) => m.codigo.equals(codigo))).go();
+  }
+
+  /// Vuelve a contar cuanto ocupa un plano en el telefono, dada la ruta de su
+  /// imagen: las dos copias y los cuadros de detalle.
+  ///
+  /// Se llama cuando termina de dibujarse el detalle, que puede pesar mas que
+  /// el plano mismo: la lista tiene que decir lo que de verdad se libera al
+  /// quitarlo.
+  Future<void> recontarPeso(String rutaVista) async {
+    final copias = {
+      ArchivosPlano.conFondo(rutaVista),
+      ArchivosPlano.sinFondo(rutaVista),
+    };
+    var bytes = 0;
+    for (final copia in copias) {
+      final archivo = File(copia);
+      if (archivo.existsSync()) bytes += archivo.lengthSync();
+    }
+    final detalle = Directory(DetallePlano.carpetaDe(rutaVista));
+    if (detalle.existsSync()) {
+      await for (final e in detalle.list()) {
+        if (e is File) bytes += await e.length();
+      }
+    }
+    if (bytes == 0) return;
+    await (_db.update(_db.mapas)..where((m) => m.rutaLocal.isIn(copias))).write(
+      MapasCompanion(tamanoMb: Value(bytes / 1048576)),
+    );
   }
 
   /// Cuanto ocupan las capas bajadas, para poder decirlo antes de que el

@@ -227,6 +227,82 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  /// Pide a donde subir la foto de un punto. Devuelve la `url` prefirmada
+  /// del bucket y el `content_type` con el que hay que mandarla.
+  Future<Map<String, dynamic>> pedirSubidaFoto(
+    Map<String, dynamic> cuerpo,
+  ) async {
+    final r = await _http
+        .post(
+          _uri('/v1/fotos'),
+          headers: _cabeceras(),
+          body: jsonEncode(cuerpo),
+        )
+        .timeout(const Duration(seconds: 30));
+    if (r.statusCode != 200) throw _fallo(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// Sube un archivo directo al bucket, contra una URL prefirmada.
+  ///
+  /// No lleva ninguna de las cabeceras del backend: la URL ya dice quien es y
+  /// que puede hacer, y una cabecera de mas hace que el bucket rechace la
+  /// firma. El plazo es largo porque es lo unico pesado que sube la app, y en
+  /// red rural medio mega puede tardar un minuto.
+  Future<void> subirArchivo(
+    String url,
+    List<int> bytes,
+    String contentType,
+  ) async {
+    final r = await _http
+        .put(
+          Uri.parse(url),
+          headers: {'Content-Type': contentType},
+          body: bytes,
+        )
+        .timeout(const Duration(seconds: 120));
+    if (r.statusCode != 200) {
+      throw ApiError(
+        r.statusCode,
+        'El almacenamiento no recibio el archivo (${r.statusCode}). Se '
+        'reintenta en la proxima sincronizacion.',
+      );
+    }
+  }
+
+  /// Avisa que la foto ya esta en el bucket. Devuelve su `llave`.
+  Future<Map<String, dynamic>> confirmarFoto(
+    String codigo,
+    Map<String, dynamic> cuerpo,
+  ) async {
+    final r = await _http
+        .post(
+          _uri('/v1/fotos/$codigo/confirmar'),
+          headers: _cabeceras(),
+          body: jsonEncode(cuerpo),
+        )
+        .timeout(const Duration(seconds: 30));
+    if (r.statusCode != 200) throw _fallo(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// Sube una tanda de informes de error. Devuelve los codigos que el
+  /// servidor recibio, que son los que el telefono puede borrar.
+  Future<List<String>> reportarErrores(
+    List<Map<String, dynamic>> errores,
+  ) async {
+    final r = await _http
+        .post(
+          _uri('/v1/errores'),
+          headers: _cabeceras(),
+          body: jsonEncode({'errores': errores}),
+        )
+        .timeout(const Duration(seconds: 30));
+    if (r.statusCode != 200) throw _fallo(r);
+    final cuerpo = jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+    return (cuerpo['recibidos'] as List<dynamic>).cast<String>();
+  }
+
   // TODO: GET  /v1/proyectos            -> espejo del directorio
   // TODO: GET  /v1/mapas?proyecto=      -> fichas de mapas listos
   // TODO: GET  /v1/mapas/{id}/descarga  -> URL prefirmada del MBTiles

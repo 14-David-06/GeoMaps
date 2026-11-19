@@ -2,11 +2,13 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geomaps/core/detalle_plano.dart';
 import 'package:geomaps/core/geopdf.dart';
 import 'package:geomaps/core/importar_geopdf.dart';
 import 'package:geomaps/core/motor_planos.dart';
 import 'package:geomaps/data/db/app_database.dart';
 import 'package:geomaps/data/mapas_repository.dart';
+import 'package:geomaps/state/afinado.dart';
 import 'package:geomaps/state/providers.dart';
 import 'package:geomaps/ui/importar_mapa_page.dart';
 import 'package:geomaps/ui/theme.dart';
@@ -59,12 +61,14 @@ void main() {
     required MotorPlanos motor,
     List<Mapa> planos = const [],
     ValueChanged<List<LatLng>?>? alCerrar,
+    Map<String, DetallePlano> afinando = const {},
   }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           dbProvider.overrideWithValue(db),
           capasImportadasProvider.overrideWith((ref) => Stream.value(planos)),
+          afinadorProvider.overrideWith((ref) => _AfinadorFijo(afinando)),
         ],
         child: MaterialApp(
           theme: temaSirius,
@@ -139,6 +143,77 @@ void main() {
     expect(devuelto!.first.longitude, -73.10);
   });
 
+  testWidgets('una hoja grande dice cuanto le falta de detalle', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 760);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    final planos = await planosGuardados(tester, ['Vias del Meta 2026']);
+    // Doce cuadros hechos de los 48 de un pliego.
+    var detalle = const DetallePlano(
+      anchoVista: 4096,
+      altoVista: 2807,
+      ancho: 8192,
+      alto: 5613,
+      trabajo: TrabajoDeDetalle(
+        pagina: 0,
+        x: 60,
+        y: 84,
+        ancho: 3240,
+        alto: 2220,
+        lineas: true,
+      ),
+    );
+    for (var i = 0; i < 12; i++) {
+      detalle = detalle.conListo(i);
+    }
+
+    await abrir(
+      tester,
+      motor: _MotorFalso(),
+      planos: planos,
+      afinando: {Afinador.clave('/no/existe.png'): detalle},
+    );
+
+    // Con la letra agrandada la lista queda debajo de la tarjeta de importar.
+    final aviso = find.text(
+      'Mejorando el detalle: 12 de 48. Ya se puede usar.',
+    );
+    await tester.scrollUntilVisible(
+      aviso,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    // Se dice que ya sirve: nadie tiene que quedarse esperando.
+    expect(aviso, findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('con el detalle terminado no dice nada', (tester) async {
+    final planos = await planosGuardados(tester, ['Vias del Meta 2026']);
+
+    await abrir(
+      tester,
+      motor: _MotorFalso(),
+      planos: planos,
+      afinando: {
+        Afinador.clave('/no/existe.png'): const DetallePlano(
+          anchoVista: 4096,
+          altoVista: 2807,
+          ancho: 8192,
+          alto: 5613,
+        ),
+      },
+    );
+
+    expect(find.textContaining('Mejorando el detalle'), findsNothing);
+  });
+
   testWidgets('con la letra del telefono agrandada no se desborda', (
     tester,
   ) async {
@@ -173,6 +248,13 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.textContaining('sin coordenadas'), findsOneWidget);
   });
+}
+
+/// Un afinador con el avance puesto a mano: la lista solo lo mira.
+class _AfinadorFijo extends Afinador {
+  _AfinadorFijo(Map<String, DetallePlano> avance) : super(const MotorPlanos()) {
+    state = avance;
+  }
 }
 
 /// El lado nativo, de mentira: o la persona cancela, o el archivo no sirve.

@@ -35,6 +35,7 @@ class WaypointsRepository {
     double? altitudM,
     String? trazadoCodigo,
     DateTime? marcadoEn,
+    String proyectoCodigo = MapasRepository.proyectoLocal,
   }) {
     final ahora = DateTime.now();
     final limpio = nombre.trim();
@@ -44,7 +45,7 @@ class WaypointsRepository {
         .insertReturning(
           WaypointsCompanion.insert(
             codigo: _uuid.v4(),
-            proyectoCodigo: MapasRepository.proyectoLocal,
+            proyectoCodigo: proyectoCodigo,
             trazadoCodigo: Value(trazadoCodigo),
             nombre: limpio.isEmpty ? 'Punto sin nombre' : limpio,
             latitud: punto.latitud,

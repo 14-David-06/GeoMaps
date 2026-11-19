@@ -329,11 +329,25 @@ Future<void> avisarSeguimiento(
 /// devuelve lo que hay que anotarle -llego, volvio- y de paso le avisa al
 /// backend, por si justo ahi hay senal.
 class VigiaDeVueltas {
-  const VigiaDeVueltas({this.avisar});
+  const VigiaDeVueltas({this.avisar, this.decir});
 
   /// Se llama con las propiedades ya actualizadas cuando el camion llego o
   /// volvio.
   final void Function(Map<String, Object?> propiedades)? avisar;
+
+  /// Se llama con la frase que hay que decirle al conductor en el momento en
+  /// que llega a los vagones o vuelve al punto de salida. El conductor va
+  /// manejando y con el telefono en el soporte o en la guantera: que la
+  /// pantalla cambie de "1 de 3" a "2 de 3" no le avisa nada.
+  final void Function(String frase)? decir;
+
+  /// Lo que se dice al entrar al radio de los vagones.
+  static const alLlegar =
+      'Llegaste a los vagones. Engánchalos y vuelve al punto de salida.';
+
+  /// Lo que se dice al volver al punto de salida habiendo ido.
+  static const alVolver =
+      'Ya estás en el punto de salida. Puedes finalizar la vuelta.';
 
   Map<String, Object?>? alFix(Position p, Map<String, Object?> propiedades) {
     final cambios = SeguimientoVuelta.de(propiedades).alFix(
@@ -342,6 +356,15 @@ class VigiaDeVueltas {
       hora: p.timestamp,
     );
     _avisarSi(propiedades, cambios);
+    // Solo con una posicion de ahora. Al retomar un viaje que se corto, la
+    // llegada se reconstruye de lo grabado y decir "llegaste" seria tarde.
+    if (cambios != null) {
+      if (cambios.containsKey('regreso')) {
+        decir?.call(alVolver);
+      } else if (cambios.containsKey('llegada')) {
+        decir?.call(alLlegar);
+      }
+    }
     return cambios;
   }
 

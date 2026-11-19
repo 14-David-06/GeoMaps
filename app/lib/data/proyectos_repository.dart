@@ -148,5 +148,41 @@ class ProyectosRepository {
     return (limpio == null || limpio.isEmpty) ? null : limpio;
   }
 
+  /// Un proyecto por su codigo, en vivo. Nulo si no esta.
+  Stream<Proyecto?> observarUno(String codigo) {
+    return (_db.select(
+      _db.proyectos,
+    )..where((p) => p.codigo.equals(codigo))).watchSingleOrNull();
+  }
+
+  /// Los que faltan subir, el mas viejo primero. Entran los archivados: que
+  /// se archivo tambien es un cambio que la base tiene que conocer.
+  Future<List<Proyecto>> pendientes(String duenoAuthUid) {
+    final consulta = _db.select(_db.proyectos)
+      ..where(
+        (p) =>
+            p.duenoAuthUid.equals(duenoAuthUid) & p.sincronizado.equals(false),
+      )
+      ..orderBy([(p) => OrderingTerm.asc(p.creadoEn)]);
+    return consulta.get();
+  }
+
+  /// Cuantos faltan subir, en vivo.
+  Stream<int> contarPendientes(String duenoAuthUid) {
+    final cuantos = _db.proyectos.id.count();
+    final consulta = _db.selectOnly(_db.proyectos)
+      ..addColumns([cuantos])
+      ..where(
+        _db.proyectos.duenoAuthUid.equals(duenoAuthUid) &
+            _db.proyectos.sincronizado.equals(false),
+      );
+    return consulta.map((f) => f.read(cuantos) ?? 0).watchSingle();
+  }
+
+  Future<void> marcarSubido(String codigo) {
+    return (_db.update(_db.proyectos)..where((p) => p.codigo.equals(codigo)))
+        .write(const ProyectosCompanion(sincronizado: Value(true)));
+  }
+
   // TODO: mezclarDirectorio(List<ProyectoRemoto>) -- rellenar, no pisar.
 }

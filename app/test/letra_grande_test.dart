@@ -4,6 +4,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:geomaps/camiones/camiones_page.dart';
 import 'package:geomaps/core/api_client.dart';
 import 'package:geomaps/core/geo.dart';
@@ -11,6 +12,7 @@ import 'package:geomaps/core/ruteo.dart';
 import 'package:geomaps/core/vias.dart';
 import 'package:geomaps/data/db/app_database.dart';
 import 'package:geomaps/data/db/enums.dart';
+import 'package:geomaps/data/proyectos_repository.dart';
 import 'package:geomaps/data/trazados_repository.dart';
 import 'package:geomaps/data/waypoints_repository.dart';
 import 'package:geomaps/state/grabacion.dart';
@@ -20,12 +22,18 @@ import 'package:geomaps/state/sesion.dart';
 import 'package:geomaps/state/ubicacion_provider.dart';
 import 'package:geomaps/state/zona_guaicaramo.dart';
 import 'package:geomaps/ui/aviso_ubicacion_page.dart';
+import 'package:geomaps/ui/boton_voz.dart';
 import 'package:geomaps/ui/capa_ruta.dart';
 import 'package:geomaps/ui/capa_vias.dart';
 import 'package:geomaps/ui/capas_panel.dart';
 import 'package:geomaps/ui/home_page.dart';
 import 'package:geomaps/ui/login_page.dart';
-import 'package:geomaps/ui/mapa_page.dart' show CapaBase;
+import 'package:geomaps/ui/mapa/barra_gps.dart';
+import 'package:geomaps/ui/mapa/botones.dart';
+import 'package:geomaps/ui/mapa/capa_base.dart';
+import 'package:geomaps/ui/mapa/cuenta.dart';
+import 'package:geomaps/ui/mapa/herramientas.dart';
+import 'package:geomaps/ui/mapa/seguidor.dart';
 import 'package:geomaps/ui/medicion.dart';
 import 'package:geomaps/ui/panel_grabacion.dart';
 import 'package:geomaps/ui/proyectos_page.dart';
@@ -57,8 +65,8 @@ class _GrabadorFijo extends Grabador {
 ///   con la letra al 130% y con el tema de verdad, y no puede desbordarse:
 ///   un renglon que se sale de su tarjeta es un dato que no se lee.
 ///
-/// El mapa no esta aca porque no se puede armar sin GPS ni teselas; sus
-/// tarjetas y franjas si, una por una.
+/// Del mapa estan aca sus tarjetas y franjas, una por una. El mapa entero,
+/// con todas encima, se abre en `mapa_page_test.dart`.
 void main() {
   late AppDatabase db;
 
@@ -119,6 +127,7 @@ void main() {
     WidgetTester tester,
     Widget pantalla, {
     bool adentro = true,
+    Sesion? quien,
     List<Override> extra = const [],
   }) async {
     tester.view.physicalSize = const Size(360, 760);
@@ -139,8 +148,10 @@ void main() {
             ),
             if (adentro)
               sesionProvider.overrideWith(
-                (ref) =>
-                    SesionNotifier.conSesion(ref.watch(apiProvider), sesion),
+                (ref) => SesionNotifier.conSesion(
+                  ref.watch(apiProvider),
+                  quien ?? sesion,
+                ),
               ),
             redProvider.overrideWith(
               (ref) => Stream.value(const RedState([ConnectivityResult.none])),
@@ -269,6 +280,25 @@ void main() {
       expect(find.text('Continuar con Google'), findsOneWidget);
     });
 
+    pantalla('el inicio con la sesion vencida, y volver a entrar', (
+      tester,
+    ) async {
+      final vencida = Sesion(
+        authUid: 'uid-1',
+        codigoUsuario: usuario,
+        nombre: 'Maria Fernanda Rodriguez Castellanos',
+        correo: 'maria.fernanda.rodriguez@example.com',
+        rol: 'Usuario',
+        venceEn: DateTime.now().subtract(const Duration(days: 2)),
+        perfiles: const {Perfil.plantacion, Perfil.camiones},
+      );
+      await abrir(tester, const HomePage(), quien: vencida);
+      expect(find.text('Tu sesion vencio'), findsOneWidget);
+
+      await abrir(tester, const LoginPage(reingreso: true), quien: vencida);
+      expect(find.text('Entrar de nuevo'), findsOneWidget);
+    });
+
     pantalla('el aviso de ubicacion', (tester) async {
       await abrir(tester, const AvisoUbicacionPage());
     });
@@ -290,6 +320,37 @@ void main() {
 
     pantalla('los proyectos', (tester) async {
       await abrir(tester, const ProyectosPage());
+    });
+
+    pantalla('los proyectos, con uno en uso', (tester) async {
+      final repo = ProyectosRepository(db);
+      await repo.crear(
+        duenoAuthUid: 'uid-1',
+        nombre: 'Finca La Esperanza del Rio Upia',
+        cliente: 'Palmas del Upia S.A.S.',
+        municipio: 'Barranca de Upia',
+      );
+      await repo.crear(duenoAuthUid: 'uid-1', nombre: 'Visita del martes');
+      await abrir(tester, const ProyectosPage());
+      // Arriba de todo, la opcion de no usar ninguno, que es la de fabrica.
+      expect(find.text('En uso: lo que levantes queda suelto'), findsOneWidget);
+
+      // Con la letra agrandada la lista es larga: se baja hasta el proyecto.
+      await tester.scrollUntilVisible(
+        find.text('Visita del martes'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      // Al tocarlo queda en uso, y la lista lo dice.
+      await tester.tap(find.text('Visita del martes'));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      sinDesbordes(tester);
+      expect(
+        find.text('En uso: lo que levantes se guarda aca'),
+        findsOneWidget,
+      );
     });
 
     pantalla('camiones', (tester) async {
@@ -376,6 +437,31 @@ void main() {
       );
     });
 
+    pantalla('marcar un punto, con sus tres botones', (tester) async {
+      await abrir(
+        tester,
+        Scaffold(
+          body: Consumer(
+            builder: (context, ref, _) => FilledButton(
+              onPressed: () => marcarPunto(
+                context,
+                ref,
+                punto: const LatLng(4.405, -72.895),
+                precisionM: 38,
+              ),
+              child: const Text('abrir'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('abrir'));
+      await tester.pumpAndSettle();
+
+      sinDesbordes(tester);
+      expect(find.text('Guardar con foto'), findsOneWidget);
+      expect(find.text('Guardar'), findsOneWidget);
+    });
+
     pantalla('la tarjeta de medir', (tester) async {
       await abrir(
         tester,
@@ -431,6 +517,7 @@ void main() {
             onCerrar: () {},
             onGuardar: () {},
             onIniciar: () {},
+            botonVoz: const BotonVoz(),
           ),
         ),
       );
@@ -447,6 +534,7 @@ void main() {
             nombreDestino: 'Acopio 38 · Bloque 9 · Parcela 2',
             onCerrar: () {},
             onTerminar: () {},
+            botonVoz: const BotonVoz(),
           ),
         ),
       );
@@ -496,6 +584,206 @@ void main() {
 
       expect(find.text('Seguir'), findsOneWidget);
       expect(find.text('Terminar'), findsOneWidget);
+    });
+
+    pantalla('las herramientas del mapa', (tester) async {
+      HerramientaMapa? elegida;
+      Widget mapa(EstadoGrabacion grabacion, Proyecto? proyecto) => Scaffold(
+        body: Builder(
+          builder: (context) => FilledButton(
+            onPressed: () async => elegida = await elegirHerramienta(
+              context,
+              grabacion: grabacion,
+              proyecto: proyecto,
+              conRutasGuardadas: true,
+            ),
+            child: const Text('abrir'),
+          ),
+        ),
+      );
+      Future<void> abrirHoja() async {
+        await anotando(() async {
+          await tester.tap(find.text('abrir'));
+          await tester.pumpAndSettle();
+        });
+        sinDesbordes(tester);
+      }
+
+      // Sin nada en curso y sin proyecto: se ofrece grabar.
+      await abrir(tester, mapa(const EstadoGrabacion(), null));
+      await abrirHoja();
+      expect(find.text('Sin proyecto'), findsOneWidget);
+      expect(find.text('Grabar recorrido'), findsOneWidget);
+      expect(find.text('Terminar el recorrido'), findsNothing);
+
+      // La hoja solo dice que se eligio, y se cierra.
+      await tester.ensureVisible(find.text('Medir distancia o area'));
+      await tester.tap(find.text('Medir distancia o area'));
+      await tester.pumpAndSettle();
+      expect(elegida, HerramientaMapa.medir);
+      expect(find.text('Grabar recorrido'), findsNothing);
+
+      // Grabando, y con un proyecto de nombre largo: se ofrece terminar.
+      final proyecto = await ProyectosRepository(db).crear(
+        duenoAuthUid: 'uid-1',
+        nombre: 'Finca La Esperanza del Rio Upia, lindero norte',
+      );
+      await abrir(
+        tester,
+        mapa(
+          const EstadoGrabacion(
+            codigo: 'rec-1',
+            nombre: 'Recorrido del lindero norte, por la ronda del cano',
+          ),
+          proyecto,
+        ),
+      );
+      await abrirHoja();
+      expect(find.textContaining('Proyecto: Finca La Esperanza'), findsOne);
+      expect(find.text('Terminar el recorrido'), findsOneWidget);
+      expect(find.text('Grabar recorrido'), findsNothing);
+      await tester.ensureVisible(find.text('Mi cuenta'));
+      await tester.tap(find.text('Mi cuenta'));
+      await tester.pumpAndSettle();
+      expect(elegida, HerramientaMapa.cuenta);
+
+      // En la vuelta de un camion la grabacion se finaliza desde su franja:
+      // aca no se ofrece ni grabar ni terminar.
+      await abrir(
+        tester,
+        mapa(
+          const EstadoGrabacion(
+            codigo: 'rec-2',
+            nombre: 'Vuelta 12',
+            propiedades: {'vuelta_id': 'v1'},
+          ),
+          null,
+        ),
+      );
+      await abrirHoja();
+      expect(find.text('Grabar recorrido'), findsNothing);
+      expect(find.text('Terminar el recorrido'), findsNothing);
+      expect(find.text('Rutas guardadas'), findsOneWidget);
+    });
+
+    pantalla('la cuenta, desde el mapa', (tester) async {
+      await abrir(
+        tester,
+        Scaffold(
+          body: Consumer(
+            builder: (context, ref, _) => FilledButton(
+              onPressed: () => mostrarCuentaDelMapa(context, ref),
+              child: const Text('abrir'),
+            ),
+          ),
+        ),
+      );
+      await anotando(() async {
+        await tester.tap(find.text('abrir'));
+        await tester.pumpAndSettle();
+      });
+
+      sinDesbordes(tester);
+      expect(find.textContaining('Sesion valida'), findsOneWidget);
+      expect(find.text('Cerrar sesion'), findsOneWidget);
+    });
+
+    pantalla('la barra del GPS, y su color segun la precision', (tester) async {
+      Position fix(double precision) => Position(
+        latitude: 4.405123,
+        longitude: -72.895456,
+        timestamp: DateTime.now(),
+        accuracy: precision,
+        altitude: 0,
+        altitudeAccuracy: 0,
+        heading: 0,
+        headingAccuracy: 0,
+        speed: 0,
+        speedAccuracy: 0,
+      );
+      Future<Color?> colorDe(BarraGps barra) async {
+        await abrir(
+          tester,
+          Scaffold(
+            backgroundColor: Colors.black,
+            body: Stack(children: [barra]),
+          ),
+        );
+        final caja = tester.widget<Container>(
+          find.descendant(
+            of: find.byType(BarraGps),
+            matching: find.byType(Container),
+          ),
+        );
+        return (caja.decoration! as BoxDecoration).color;
+      }
+
+      // Buscando: el renglon mas largo que muestra.
+      expect(
+        await colorDe(const BarraGps(posicion: null, error: null)),
+        ColoresEstado.aviso,
+      );
+      expect(
+        await colorDe(
+          const BarraGps(
+            posicion: null,
+            error:
+                'La app no tiene permiso para usar la ubicacion. Activalo en '
+                'los ajustes del telefono.',
+          ),
+        ),
+        ColoresEstado.mal,
+      );
+      // Con 10 m o menos el punto sirve para un lindero; con mas, no.
+      expect(
+        await colorDe(BarraGps(posicion: fix(4), error: null)),
+        ColoresEstado.bien,
+      );
+      expect(find.textContaining('+/- 4 m'), findsOneWidget);
+      expect(
+        await colorDe(BarraGps(posicion: fix(38), error: null)),
+        ColoresEstado.aviso,
+      );
+    });
+
+    pantalla('los botones del mapa y el cartel de trazando', (tester) async {
+      Widget costado({required bool conAcopios, required bool conPosicion}) =>
+          Scaffold(
+            backgroundColor: Colors.black,
+            body: Stack(
+              children: [
+                Positioned(
+                  right: 16,
+                  bottom: 140,
+                  child: BotonesDelMapa(
+                    modo: ModoCamara.rumbo,
+                    alAbrirHerramientas: () {},
+                    alAbrirCapas: () {},
+                    alBuscarAcopio: conAcopios ? () {} : null,
+                    alCentrar: conPosicion ? () {} : null,
+                  ),
+                ),
+                const Align(
+                  alignment: Alignment.bottomCenter,
+                  child: CalculandoRuta(),
+                ),
+              ],
+            ),
+          );
+
+      await abrir(tester, costado(conAcopios: true, conPosicion: true));
+      expect(find.byTooltip('Buscar un acopio'), findsOneWidget);
+      expect(find.byTooltip('Norte arriba'), findsOneWidget);
+      expect(find.textContaining('Trazando la ruta'), findsOneWidget);
+
+      // El mapa a secas no tiene acopios que buscar; sin posicion, no hay
+      // donde centrar y el boton queda apagado.
+      await abrir(tester, costado(conAcopios: false, conPosicion: false));
+      expect(find.byTooltip('Buscar un acopio'), findsNothing);
+      final centrar = tester.widget<FloatingActionButton>(
+        find.widgetWithIcon(FloatingActionButton, Icons.navigation),
+      );
+      expect(centrar.onPressed, isNull);
     });
 
     pantalla('el panel de capas', (tester) async {

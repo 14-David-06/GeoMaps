@@ -139,10 +139,15 @@ class PanelRuta extends StatelessWidget {
     this.enRuta = false,
     this.onIniciar,
     this.onTerminar,
+    this.botonVoz,
     super.key,
   });
 
   final Ruta ruta;
+
+  /// El parlante que prende y apaga las indicaciones habladas. Va al lado
+  /// del boton de iniciar o terminar; nulo donde no hay voz que ofrecer.
+  final Widget? botonVoz;
 
   /// Si la ruta ya se inicio: se esta grabando por donde se va, y al terminar
   /// se pregunta que tal estuvo.
@@ -258,34 +263,42 @@ class PanelRuta extends StatelessWidget {
             // Iniciar es un boton y no algo que pasa solo al marcar el punto:
             // marcar un destino es mirar cuanto falta, y de ahi a salir hay un
             // paso. Lo que se inicia se graba y se califica al final.
-            if (enRuta && onTerminar != null)
+            if (_boton() case final boton?)
               Padding(
                 padding: const EdgeInsets.only(top: 8, right: 8),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.tonalIcon(
-                    onPressed: onTerminar,
-                    icon: const Icon(Icons.flag_outlined, size: 18),
-                    label: const Text('Terminar la ruta'),
-                  ),
-                ),
-              )
-            else if (!enRuta && onIniciar != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8, right: 8),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: calculando ? null : onIniciar,
-                    icon: const Icon(Icons.navigation, size: 18),
-                    label: const Text('Iniciar la ruta'),
-                  ),
+                child: Row(
+                  children: [
+                    Expanded(child: boton),
+                    if (botonVoz != null) ...[
+                      const SizedBox(width: 8),
+                      botonVoz!,
+                    ],
+                  ],
                 ),
               ),
           ],
         ),
       ),
     );
+  }
+
+  /// El boton del momento: iniciar, terminar, o ninguno.
+  Widget? _boton() {
+    if (enRuta && onTerminar != null) {
+      return FilledButton.tonalIcon(
+        onPressed: onTerminar,
+        icon: const Icon(Icons.flag_outlined, size: 20),
+        label: const Text('Terminar la ruta'),
+      );
+    }
+    if (!enRuta && onIniciar != null) {
+      return FilledButton.icon(
+        onPressed: calculando ? null : onIniciar,
+        icon: const Icon(Icons.navigation, size: 20),
+        label: const Text('Iniciar la ruta'),
+      );
+    }
+    return null;
   }
 
   String _detalle() {
@@ -300,6 +313,41 @@ class PanelRuta extends StatelessWidget {
           'y los ultimos ${formatearDistancia(aPie)} a pie';
     }
     return 'Por las vias del predio';
+  }
+}
+
+/// Mientras se arma el grafo y se busca el camino.
+///
+/// La primera ruta de cada sesion tarda unas decimas de segundo -hay que armar
+/// el grafo de las vias- y sin este cartel esa demora se lee como que el mapa
+/// ignoro el gesto.
+class CalculandoRuta extends StatelessWidget {
+  const CalculandoRuta({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      elevation: 6,
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            SizedBox(width: 16),
+            // Expandido: con la letra agrandada el renglon no entra en una
+            // sola linea y sin esto se salia de la tarjeta.
+            Expanded(
+              child: Text('Trazando la ruta por las vias del predio...'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
