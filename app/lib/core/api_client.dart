@@ -37,7 +37,7 @@ class ApiClient {
   /// El JWT de la sesion activa. Lo pone `SesionState` al entrar.
   String? token;
 
-  Uri _uri(String ruta) => Uri.parse('${Config.apiBase}$ruta');
+  Uri _uri(String ruta) => Uri.parse('${Config.api}$ruta');
 
   Map<String, String> _cabeceras({bool conToken = true}) => {
     'Content-Type': 'application/json',

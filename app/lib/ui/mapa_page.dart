@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,6 +16,7 @@ import '../core/ubicacion.dart';
 import '../core/vias.dart';
 import '../data/db/app_database.dart';
 import '../data/db/enums.dart';
+import '../platform/pwa.dart';
 import '../state/afinado.dart';
 import '../state/captura.dart';
 import '../state/fotos.dart';
@@ -245,10 +247,14 @@ class _MapaPageState extends ConsumerState<MapaPage>
     // nuevo, y sin internet esa busqueda son minutos.
     Gps.instancia.despertar();
     _camara.arrancarBrujula();
+    // En el iPhone una app web pierde la ubicacion con la pantalla bloqueada:
+    // mientras el mapa este abierto, la pantalla no se apaga sola.
+    if (kIsWeb) Pwa.pantallaEncendida(true);
   }
 
   @override
   void dispose() {
+    if (kIsWeb) Pwa.pantallaEncendida(false);
     _suscripcion?.cancel();
     _nav.dispose();
     _camara.dispose();

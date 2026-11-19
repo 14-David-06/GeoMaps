@@ -6,6 +6,7 @@ analyzer:
     - "**/*.g.dart"
     - build/**
     - android/**
+    - web/**
   errors:
     # Un TODO no puede frenar un build de CI.
     todo: ignore

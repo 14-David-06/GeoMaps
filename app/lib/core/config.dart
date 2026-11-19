@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 /// Configuracion de compilacion.
 ///
 /// Todo entra por `--dart-define`, nunca por un archivo commiteado: un APK
@@ -13,6 +15,17 @@ class Config {
     'API_BASE',
     defaultValue: 'https://geo-maps-seven.vercel.app',
   );
+
+  /// A donde se llama de verdad. En el telefono es [apiBase]. En el navegador
+  /// es el mismo dominio que sirvio la app: la app web vive dentro del
+  /// backend (`/geomaps/`), asi que no hay CORS, y un despliegue Preview de
+  /// Vercel habla con su propio backend y no con produccion. API_BASE_WEB lo
+  /// cambia, solo para probar.
+  static String get api {
+    if (!kIsWeb) return apiBase;
+    const propia = String.fromEnvironment('API_BASE_WEB');
+    return propia.isNotEmpty ? propia : Uri.base.origin;
+  }
 
   /// Viaja en el header X-API-Key. No identifica al usuario, solo dice que
   /// quien llama es esta app.

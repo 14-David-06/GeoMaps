@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
 import '../camiones/seguimiento.dart';
@@ -290,6 +292,12 @@ class Sincronizador extends StateNotifier<EstadoSincronizacion> {
       errores.add('El servidor no contesto a tiempo. Se reintenta solo.');
     } on SocketException {
       errores.add('Sin conexion con el servidor. Se reintenta con senal.');
+    } on http.ClientException catch (e) {
+      // En el navegador un corte de red llega asi y no como SocketException.
+      // En Android queda el mensaje de siempre.
+      errores.add(
+        kIsWeb ? 'Sin conexion con el servidor. Se reintenta con senal.' : '$e',
+      );
     } on Exception catch (e) {
       errores.add('$e');
     }

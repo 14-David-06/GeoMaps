@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <!-- Pagina de instalacion de GeoMaps. HTML suelto, sin Flutter: tiene que
+       abrir rapido con una raya de senal. A ella apunta el codigo QR que se
+       imprime y se reparte en campo (docs/qr/instalar-geomaps.*). -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1B5E20">
+  <title>Instalar GeoMaps</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.json">
+  <style>
+    :root {
+      --fondo: #FFFFFF;
+      --texto: #1C1B1F;
+      --suave: #49454F;
+      --marca: #1B5E20;
+      --marca-texto: #FFFFFF;
+      --borde: #CAC4D0;
+      --tarjeta: #F4F6F2;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --fondo: #121212;
+        --texto: #F2F2F2;
+        --suave: #CFCFCF;
+        --marca: #81C784;
+        --marca-texto: #0B2E0D;
+        --borde: #4A4A4A;
+        --tarjeta: #1E241E;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--fondo);
+      color: var(--texto);
+      font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+      font-size: 20px;
+      line-height: 1.45;
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+               max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    }
+    main { max-width: 640px; margin: 0 auto; }
+    header { display: flex; align-items: center; gap: 14px; margin: 8px 0 20px; }
+    header img { width: 64px; height: 64px; border-radius: 14px; border: 1px solid var(--borde); }
+    h1 { font-size: 30px; line-height: 1.2; margin: 0; }
+    h2 { font-size: 24px; margin: 32px 0 12px; }
+    p { margin: 0 0 14px; }
+    .suave { color: var(--suave); }
+    ol { list-style: none; padding: 0; margin: 0; counter-reset: paso; }
+    ol li {
+      counter-increment: paso;
+      display: grid;
+      grid-template-columns: 48px 1fr;
+      gap: 14px;
+      align-items: start;
+      background: var(--tarjeta);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    ol li::before {
+      content: counter(paso);
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      background: var(--marca);
+      color: var(--marca-texto);
+      font-weight: 700;
+      font-size: 24px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    ol li strong { display: block; font-size: 22px; margin-bottom: 4px; }
+    .icono {
+      display: inline-flex; vertical-align: middle;
+      width: 34px; height: 34px; margin: 0 2px;
+      border: 2px solid var(--texto); border-radius: 8px;
+      align-items: center; justify-content: center;
+    }
+    .icono svg { width: 22px; height: 22px; stroke: var(--texto); fill: none; stroke-width: 2; }
+    .boton {
+      display: block;
+      text-align: center;
+      text-decoration: none;
+      font-size: 21px;
+      font-weight: 700;
+      min-height: 56px;
+      padding: 14px 18px;
+      border-radius: 14px;
+      margin: 10px 0;
+      background: var(--marca);
+      color: var(--marca-texto);
+    }
+    .boton.secundario { background: transparent; color: var(--texto); border: 2px solid var(--borde); }
+    .aviso {
+      border-left: 6px solid var(--marca);
+      background: var(--tarjeta);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin: 16px 0;
+    }
+    .qr { text-align: center; margin-top: 8px; }
+    .qr img { width: 220px; max-width: 70%; height: auto; background: #FFFFFF; padding: 10px; border-radius: 12px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="icons/Icon-192.png" alt="">
+    <h1>Instalar GeoMaps</h1>
+  </header>
+
+  <p>El mapa del predio, tu ubicación, los acopios y las rutas, <strong>sin señal</strong>.</p>
+
+  <section id="ya-instalada" hidden>
+    <div class="aviso">GeoMaps ya está instalada en este teléfono.</div>
+    <a class="boton" href="index.html">Abrir GeoMaps</a>
+  </section>
+
+  <section id="iphone">
+    <h2>En iPhone</h2>
+    <p class="suave">Se instala desde <strong>Safari</strong>. Si abriste este enlace en otra app, cópialo y ábrelo en Safari.</p>
+    <ol>
+      <li>
+        <div>
+          <strong>Abre GeoMaps en Safari</strong>
+          <a class="boton" id="abrir-app" href="index.html">Abrir GeoMaps</a>
+          Espera a que cargue. Los pasos que siguen se hacen en esa pantalla.
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Toca Compartir</strong>
+          Es el botón
+          <span class="icono" aria-label="Compartir">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5M6 11H5v10h14V11h-1"/></svg>
+          </span>
+          abajo en el centro de Safari.
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Elige «Agregar a pantalla de inicio»</strong>
+          Tiene este dibujo
+          <span class="icono" aria-label="Agregar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></svg>
+          </span>.
+          Si no la ves, desliza la lista hacia arriba.
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Toca «Agregar»</strong>
+          Arriba a la derecha. Aparece el ícono de GeoMaps en tu pantalla de inicio.
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Abre GeoMaps desde el ícono</strong>
+          La primera vez necesita señal: entra con tu correo y clave, y espera
+          el mensaje <em>«Listo. Ya podés usar GeoMaps sin señal»</em>.
+        </div>
+      </li>
+    </ol>
+    <div class="aviso">
+      Usa siempre el <strong>ícono</strong>, no la pestaña de Safari. Lo que se
+      guarda en Safari no pasa a la app y no funciona sin señal.
+    </div>
+  </section>
+
+  <section id="android">
+    <h2>En Android</h2>
+    <p>En Android GeoMaps es una app normal, con más funciones (camiones, fotos, planos en PDF).</p>
+    <a class="boton" href="https://play.google.com/store/apps/details?id=com.siriusregenerative.geomaps">Instalar desde Google Play</a>
+    <a class="boton secundario" href="/descargar">Bajar el instalador directo (APK)</a>
+  </section>
+
+  <section>
+    <h2>Pasarle GeoMaps a un compañero</h2>
+    <p>Que escanee este código con la cámara del teléfono.</p>
+    <div class="qr"><img src="instalar-qr.svg" alt="Código QR de esta página"></div>
+  </section>
+</main>
+<script>
+  (function () {
+    var ua = navigator.userAgent;
+    var iphone = /iPhone|iPad|iPod/.test(ua) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    var android = /Android/.test(ua);
+    var instalada = navigator.standalone === true ||
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    if (instalada) document.getElementById('ya-instalada').hidden = false;
+    // Primero lo del telefono que se tiene en la mano.
+    if (android) {
+      var main = document.querySelector('main');
+      main.insertBefore(document.getElementById('android'), document.getElementById('iphone'));
+    }
+    if (iphone && instalada) document.getElementById('abrir-app').hidden = true;
+  })();
+</script>
+</body>
+</html>

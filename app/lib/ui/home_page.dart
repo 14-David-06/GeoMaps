@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -20,6 +21,8 @@ import 'login_page.dart';
 import 'mapa_guaicaramo.dart';
 import 'mapa_page.dart';
 import 'proyectos_page.dart';
+import 'pwa/diagnostico_pwa_page.dart';
+import 'pwa/tarjeta_pwa.dart';
 import 'sincronizacion_page.dart';
 import 'theme.dart';
 
@@ -68,6 +71,9 @@ class HomePage extends ConsumerWidget {
             _Saludo(nombre: sesion.nombre),
             const SizedBox(height: 16),
             const AvisoActualizacion(),
+            // La app del iPhone: si ya quedo guardada para usar sin senal, si
+            // hay una version nueva, y con que datos esta trabajando sin red.
+            if (kIsWeb) const TarjetaPwa(),
             if (sesion.vencida) const _SesionVencida(),
             const _Estado(),
             const SizedBox(height: 24),
@@ -196,6 +202,10 @@ class HomePage extends ConsumerWidget {
                   );
                 },
               ),
+              // La version, y tocada siete veces, el diagnostico: en el
+              // iPhone no hay consola sin una Mac, y es lo unico que dice que
+              // quedo guardado en el telefono.
+              if (kIsWeb) const VersionConDiagnostico(),
             ],
           ),
         ),
@@ -570,7 +580,9 @@ class _Accesos extends ConsumerWidget {
         destacada: true,
         alTocar: () => _ir(context, const MapaPage()),
       ),
-      if (camiones)
+      // Camiones lee el QR con la camara y sigue el viaje con la pantalla
+      // apagada: en el iPhone, como app web, no se puede. Queda en Android.
+      if (camiones && !kIsWeb)
         _Tarjeta(
           icono: Icons.local_shipping_outlined,
           titulo: 'Camiones',
@@ -591,7 +603,10 @@ class _Accesos extends ConsumerWidget {
               ),
           alTocar: () => _ir(context, const ProyectosPage()),
         ),
-      if (plantacion)
+      // Bajar el satelite de una zona entera no va en la app web hasta que haya
+      // una fuente de imagenes cuya licencia permita guardarlas para usar sin
+      // senal. Lo que se mira con senal si queda guardado.
+      if (plantacion && !kIsWeb)
         _Tarjeta(
           icono: Icons.download_outlined,
           titulo: 'Descargas',

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <!--
+    GeoMaps web: la app que se instala en el iPhone desde Safari.
+
+    Se compila y se publica con tools/compilar_pwa.py; `$FLUTTER_BASE_HREF` lo
+    reemplaza `--base-href` (/geomaps/ en el backend de Vercel).
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <!-- viewport-fit=cover: la app ocupa la pantalla entera y el contenedor de
+       abajo se aparta solo de la barra del iPhone (ver #geomaps). -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Solo scripts de este dominio. El plugin web de Google Sign-In baja
+       accounts.google.com/gsi/client apenas arranca la app, aunque la app web
+       no ofrece entrar con Google: asi ni se pide. Solo limita <script> e
+       import(); el mapa sigue pidiendo sus imagenes a Esri y OSM. -->
+  <meta http-equiv="Content-Security-Policy" content="script-src-elem 'self' 'unsafe-inline'">
+  <meta name="description" content="GeoMaps de Sirius: el mapa del predio, sin senal.">
+  <meta name="theme-color" content="#1B5E20">
+
+  <!-- Instalada desde Safari ("Agregar a pantalla de inicio") -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="GeoMaps">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="manifest" href="manifest.json">
+  <title>GeoMaps</title>
+
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #FFFFFF;
+      overflow: hidden;
+      -webkit-text-size-adjust: 100%;
+    }
+    /* Flutter dibuja aca adentro y no en el body entero: asi la tarjeta de
+       abajo del mapa no queda debajo de la raya para ir al inicio del iPhone,
+       donde tocarla cierra la app. */
+    #geomaps {
+      position: fixed;
+      top: env(safe-area-inset-top, 0px);
+      right: env(safe-area-inset-right, 0px);
+      bottom: env(safe-area-inset-bottom, 0px);
+      left: env(safe-area-inset-left, 0px);
+    }
+    /* Mientras carga. Letra grande: la usan personas que no ven bien. */
+    #cargando {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 24px;
+      background: #FFFFFF;
+      color: #1C1B1F;
+      font-family: -apple-system, system-ui, sans-serif;
+      text-align: center;
+      z-index: 10;
+    }
+    #cargando img { width: 120px; height: 120px; }
+    #cargando .titulo { font-size: 30px; font-weight: 700; }
+    #cargando .detalle { font-size: 21px; max-width: 22em; line-height: 1.4; }
+    #cargando.oculto { display: none; }
+  </style>
+
+  <!-- Antes que Flutter: la app lo consulta apenas arranca. -->
+  <script src="geomaps_pwa.js"></script>
+</head>
+<body>
+  <div id="geomaps"></div>
+
+  <div id="cargando" role="status" aria-live="polite">
+    <img src="icons/Icon-192.png" alt="">
+    <div class="titulo">GeoMaps</div>
+    <div class="detalle" id="cargando-detalle">Abriendo el mapa...</div>
+  </div>
+
+  <script>
+    (function () {
+      var cargando = document.getElementById('cargando');
+      window.addEventListener('flutter-first-frame', function () {
+        cargando.classList.add('oculto');
+      });
+      // Si no abrio en este tiempo, lo mas probable es que sea la primera vez
+      // y no haya senal: sin decirlo, la pantalla parece colgada.
+      setTimeout(function () {
+        if (cargando.classList.contains('oculto')) return;
+        document.getElementById('cargando-detalle').textContent =
+          navigator.onLine === false
+            ? 'Sin senal. La primera vez GeoMaps necesita internet para ' +
+              'guardarse en el telefono; despues abre sin senal.'
+            : 'Esta tardando mas de lo normal. Si la senal es poca, espera ' +
+              'un momento.';
+      }, 20000);
+    })();
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

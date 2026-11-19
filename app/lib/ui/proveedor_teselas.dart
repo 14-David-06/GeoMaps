@@ -6,6 +6,7 @@ import 'package:flutter_map/flutter_map.dart';
 
 import '../core/fuente_teselas.dart';
 import '../core/teselas.dart';
+import '../platform/pwa.dart';
 
 /// Como aparece cada imagen del mapa: con un fundido corto la primera vez, y
 /// **sin fundido cuando se reemplaza**. Lo usan todos los mapas de la app.
@@ -299,6 +300,9 @@ ProveedorTeselas proveedorDe({
         plantilla: plantilla,
         paquete: paquete,
         almacen: () {
+          // En el navegador la cache de flutter_map no existe: la reemplaza la
+          // de la app web, en la Cache API.
+          if (kIsWeb) return Pwa.cacheTeselas;
           try {
             return BuiltInMapCachingProvider.getOrCreateInstance();
           } catch (_) {

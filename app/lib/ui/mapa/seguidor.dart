@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -84,6 +85,9 @@ class SeguidorDeCamara {
   }
 
   void arrancarBrujula() {
+    // flutter_compass no tiene version web. En el iPhone el rumbo sale del GPS
+    // andando; quieto, el mapa no gira.
+    if (kIsWeb) return;
     final eventos = FlutterCompass.events;
     if (eventos == null) return; // Telefono sin magnetometro.
     _brujulaSub = eventos.listen((e) {

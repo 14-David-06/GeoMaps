@@ -73,6 +73,11 @@ tools/salida/
 # del predio queda no disponible.
 app/assets/zonas/*.json
 
+# La app web compilada (tools/compilar_pwa.py). Lleva adentro estos mismos
+# datos del predio, asi que tampoco se versiona: se despliega desde la maquina
+# que la compilo.
+backend/public/geomaps/
+
 # Los archivos fuente de los que salen, por si alguien los deja en el repo
 # mientras trabaja.
 *.kmz

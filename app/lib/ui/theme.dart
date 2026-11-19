@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 /// Los colores con los que la app dice como esta algo: bien, ojo, mal.
@@ -71,6 +72,11 @@ const _rellenoBoton = EdgeInsets.symmetric(horizontal: 20, vertical: 12);
 final ThemeData temaSirius = ThemeData(
   useMaterial3: true,
   colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1B5E20)),
+  // En el navegador no hay letra del sistema: la app trae Roboto en
+  // `web/fuentes/` y la carga al arrancar (`Pwa.cargarFuentes`). En el iPhone
+  // Flutter pediria la de Apple, que no existe ahi. En Android queda la de
+  // siempre.
+  fontFamily: kIsWeb ? 'Roboto' : null,
   textTheme: _letra,
   filledButtonTheme: FilledButtonThemeData(
     style: FilledButton.styleFrom(

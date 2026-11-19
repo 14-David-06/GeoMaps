@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -411,10 +412,13 @@ class FichaPunto extends StatelessWidget {
               const SizedBox(height: 4),
               Text(w.nota!, maxLines: 3, overflow: TextOverflow.ellipsis),
             ],
-            Padding(
-              padding: const EdgeInsets.only(top: 8, right: 8),
-              child: FotosDelPunto(punto: w),
-            ),
+            // Las fotos son archivos del telefono y suben desde ahi: en la app
+            // web todavia no.
+            if (!kIsWeb)
+              Padding(
+                padding: const EdgeInsets.only(top: 8, right: 8),
+                child: FotosDelPunto(punto: w),
+              ),
             // Un Wrap y no una fila: con la letra agrandada los dos botones no
             // entran lado a lado, y el segundo baja en vez de salirse.
             Padding(

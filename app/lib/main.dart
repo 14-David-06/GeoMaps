@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,15 +7,18 @@ import 'package:path_provider/path_provider.dart';
 
 import 'core/errores.dart';
 import 'core/version_app.dart';
+import 'platform/pwa.dart';
 import 'state/actualizacion.dart';
 import 'state/aviso_ubicacion.dart';
 import 'state/errores.dart';
 import 'state/providers.dart';
+import 'state/pwa.dart';
 import 'state/sesion.dart';
 import 'ui/actualizacion_page.dart';
 import 'ui/aviso_ubicacion_page.dart';
 import 'ui/home_page.dart';
 import 'ui/login_page.dart';
+import 'ui/pwa/aviso_instalar_page.dart';
 import 'ui/theme.dart';
 
 /// Punto de entrada.
@@ -24,6 +28,12 @@ import 'ui/theme.dart';
 /// que estar ahi.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (kIsWeb) {
+    // La app del iPhone: el estado del service worker, y la letra empaquetada
+    // antes del primer cuadro (sin ella, sin senal abre sin letras).
+    Pwa.arrancar();
+    await Pwa.cargarFuentes();
+  }
   final version = await _versionLocal();
   // Antes que todo lo demas: lo que falle de aca en adelante queda anotado.
   final errores = await _prepararErrores(version);
@@ -128,6 +138,14 @@ class _Puerta extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final version = ref.watch(actualizacionProvider.select((e) => e.estado));
     if (version == EstadoVersion.bloqueada) return const ActualizacionPage();
+
+    // En el iPhone, abierta desde Safari y no desde el icono: lo que se guarde
+    // en la pestana no pasa a la app instalada. Primero se instala.
+    if (kIsWeb &&
+        !ref.watch(seguirEnNavegadorProvider) &&
+        ref.watch(estadoPwaProvider.select((e) => e.esIphone && !e.instalada))) {
+      return const AvisoInstalarPage();
+    }
 
     final estado = ref.watch(sesionProvider);
 

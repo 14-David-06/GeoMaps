@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_map/flutter_map.dart'
     show CachedMapTile, CachedMapTileMetadata, MapCachingProvider;
 import 'package:http/http.dart' as http;
@@ -333,12 +334,19 @@ class FuenteTeselas {
       final r = await _cliente
           .get(
             Uri.parse(url),
-            headers: {
-              'User-Agent': 'flutter_map ($paquete)',
-              // "Solo si cambio": el satelite de una plantacion no cambia en
-              // meses, y asi renovar una copia vencida no la vuelve a bajar.
-              'If-None-Match': ?etag,
-            },
+            // En el navegador ninguna de las dos: el User-Agent lo pone el
+            // navegador, y las dos obligarian a Esri y a OSM a contestar una
+            // consulta CORS previa por cada imagen. flutter_map tampoco las
+            // manda en la web.
+            headers: kIsWeb
+                ? const {}
+                : {
+                    'User-Agent': 'flutter_map ($paquete)',
+                    // "Solo si cambio": el satelite de una plantacion no cambia
+                    // en meses, y asi renovar una copia vencida no la vuelve a
+                    // bajar.
+                    'If-None-Match': ?etag,
+                  },
           )
           .timeout(espera);
       // Contesto algo, lo que sea: la red anda.

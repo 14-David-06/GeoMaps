@@ -194,3 +194,17 @@ python tools/acopios_guaicaramo.py [<acopios.geojson>]
 
 Imprime dos controles: cuantos pares (lote, numero) se repiten -tiene que ser
 casi ninguno- y cuantos acopios caen fuera del perimetro del predio.
+
+## La app web para iPhone
+
+`compilar_pwa.py` compila la app de Flutter para el navegador, le arma el
+service worker que la deja abrir sin senal y la copia a
+`backend/public/geomaps/`, que Vercel sirve junto al API. No despliega: eso es
+desplegar el backend como siempre.
+
+```bash
+backend/.venv/Scripts/python tools/compilar_pwa.py [--sin-compilar]
+```
+
+Tambien genera el QR de la pagina de instalacion en `docs/qr/`. Todo el detalle
+en `docs/pwa/README.md`.

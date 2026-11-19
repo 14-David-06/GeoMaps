@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -192,6 +194,24 @@ abstract final class Exportador {
     required List<int> bytes,
     required String detalle,
   }) async {
+    if (kIsWeb) {
+      // En el navegador no hay carpeta temporal: el archivo se arma en
+      // memoria y el iPhone lo ofrece con su hoja de compartir.
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile.fromData(
+              Uint8List.fromList(bytes),
+              name: '${nombreDeArchivo(nombre)}.${formato.extension}',
+              mimeType: formato.mime,
+            ),
+          ],
+          subject: nombre,
+          text: detalle.isEmpty ? nombre : '$nombre · $detalle',
+        ),
+      );
+      return;
+    }
     final carpeta = await getTemporaryDirectory();
     final archivo = File(
       p.join(carpeta.path, '${nombreDeArchivo(nombre)}.${formato.extension}'),

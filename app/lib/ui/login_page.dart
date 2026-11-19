@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -258,35 +259,40 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                   ),
 
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      const Expanded(child: Divider()),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text(
-                          'o',
-                          style: TextStyle(color: colores.onSurfaceVariant),
+                  // En la app web (iPhone) solo correo y clave: Google Sign-In
+                  // en el navegador no entrega el idToken por esta via, y no
+                  // acepta las direcciones Preview de Vercel como origen.
+                  if (!kIsWeb) ...[
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        const Expanded(child: Divider()),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(
+                            'o',
+                            style: TextStyle(color: colores.onSurfaceVariant),
+                          ),
+                        ),
+                        const Expanded(child: Divider()),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: cargando
+                            ? null
+                            : () => ref.read(sesionProvider.notifier).entrar(),
+                        icon: const Icon(Icons.login),
+                        label: const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 14),
+                          child: Text('Continuar con Google'),
                         ),
                       ),
-                      const Expanded(child: Divider()),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: cargando
-                          ? null
-                          : () => ref.read(sesionProvider.notifier).entrar(),
-                      icon: const Icon(Icons.login),
-                      label: const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 14),
-                        child: Text('Continuar con Google'),
-                      ),
                     ),
-                  ),
+                  ],
 
                   const SizedBox(height: 22),
 

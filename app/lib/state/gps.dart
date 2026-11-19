@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -131,11 +132,14 @@ class Gps {
     _ciclo = AppLifecycleListener(onResume: reiniciar);
     // Si alguien apaga y prende la ubicacion, el flujo muere con el apagado y
     // no vuelve solo.
-    try {
-      _servicio = Geolocator.getServiceStatusStream().listen((estado) {
-        if (estado == ServiceStatus.enabled) reiniciar();
-      });
-    } catch (_) {}
+    // En el navegador no existe: el vigia de abajo lo cubre.
+    if (!kIsWeb) {
+      try {
+        _servicio = Geolocator.getServiceStatusStream().listen((estado) {
+          if (estado == ServiceStatus.enabled) reiniciar();
+        });
+      } catch (_) {}
+    }
     _vigia = Timer.periodic(const Duration(seconds: 15), (_) => _vigilar());
     _arrancar();
   }

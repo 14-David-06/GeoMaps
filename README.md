@@ -11,6 +11,10 @@ tools/     GDAL — GeoPDF/GeoTIFF -> MBTiles (corre en el servidor, no en el te
 docs/      Modelo de datos y despliegue
 ```
 
+En el iPhone, sin cuenta de Apple Developer, GeoMaps se instala desde Safari
+como app web (PWA): el mismo codigo Flutter compilado para el navegador y
+servido por el backend en `/geomaps/`. Ver [`docs/pwa/README.md`](docs/pwa/README.md).
+
 ## Que resuelve
 
 Un tecnico en un potrero de Guaicaramo, sin datos, tiene que:

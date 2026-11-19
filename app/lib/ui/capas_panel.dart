@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'capa_acopios.dart' show colorAcopio;
@@ -137,31 +138,35 @@ class PanelCapas extends StatelessWidget {
                   ),
               ],
             ],
-            const SizedBox(height: 12),
-            const _Titulo('Planos importados'),
-            if (planos > 0)
-              SwitchListTile(
+            // Importar un PDF cartografico necesita el lector nativo de
+            // Android (PlanosNativos.kt): en la app web no esta.
+            if (!kIsWeb) ...[
+              const SizedBox(height: 12),
+              const _Titulo('Planos importados'),
+              if (planos > 0)
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.map),
+                  title: Text('Ver los planos ($planos)'),
+                  subtitle: const Text('Se apagan todos juntos'),
+                  value: verPlanos,
+                  onChanged: onPlanos,
+                ),
+              ListTile(
                 contentPadding: EdgeInsets.zero,
-                secondary: const Icon(Icons.map),
-                title: Text('Ver los planos ($planos)'),
-                subtitle: const Text('Se apagan todos juntos'),
-                value: verPlanos,
-                onChanged: onPlanos,
+                leading: const Icon(Icons.upload_file),
+                title: Text(
+                  planos > 0 ? 'Administrar planos' : 'Importar un plano',
+                ),
+                subtitle: Text(
+                  'PDF de topografia o cartografico (vias, planchas) encima '
+                  'del mapa',
+                  style: TextStyle(color: colores.onSurfaceVariant),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: onAdministrarPlanos,
               ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.upload_file),
-              title: Text(
-                planos > 0 ? 'Administrar planos' : 'Importar un plano',
-              ),
-              subtitle: Text(
-                'PDF de topografia o cartografico (vias, planchas) encima '
-                'del mapa',
-                style: TextStyle(color: colores.onSurfaceVariant),
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: onAdministrarPlanos,
-            ),
+            ],
           ],
         ),
       ),

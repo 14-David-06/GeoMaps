@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_tts/flutter_tts.dart';
 
 /// Quien dice las cosas en voz alta.
@@ -71,7 +72,9 @@ class VozTts implements Voz {
       await tts.setPitch(1);
       // Sale por el canal de indicaciones, como un navegador: se oye aunque
       // el telefono este en silencio para llamadas.
-      await tts.setAudioAttributesForNavigation();
+      // Solo Android: el plugin web no lo tiene, y fallar aca dejaba la app
+      // web sin voz.
+      if (!kIsWeb) await tts.setAudioAttributesForNavigation();
       // No se espera a que termine de hablar: quien pide una frase esta en
       // medio de atender una posicion del GPS.
       await tts.awaitSpeakCompletion(false);

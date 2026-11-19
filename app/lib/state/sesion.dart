@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -387,7 +387,9 @@ class SesionNotifier extends StateNotifier<EstadoSesion> {
     // Inofensivo si la persona entro con clave: sin sesion de Google abierta,
     // `signOut` no hace nada. Una rama por proveedor aca no compraria nada.
     try {
-      await _google.signOut();
+      // En la app web no hay entrada con Google (ver LoginPage), y tocar el
+      // plugin ahi baja el script de accounts.google.com.
+      if (!kIsWeb) await _google.signOut();
     } catch (_) {
       // Los servicios de Google del telefono pueden estar rotos -es la razon
       // por la que existe la puerta de clave-, y eso no puede dejar a alguien

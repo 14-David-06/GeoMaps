@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ota_update/ota_update.dart';
@@ -9,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
 import '../core/version_app.dart';
+import '../platform/pwa.dart';
 import 'providers.dart';
 import 'red.dart';
 import 'sesion.dart';
@@ -199,6 +201,19 @@ class ActualizacionNotifier extends StateNotifier<EstadoActualizacion> {
   /// adulterado no llega al instalador.
   Future<void> actualizar() async {
     if (state.descargando) return;
+    if (kIsWeb) {
+      // La app web no baja un APK: su service worker ya trajo la version
+      // nueva, y aplicarla es recargar. Si no trajo ninguna, todavia no se
+      // publico para el iPhone.
+      if (!await Pwa.actualizar()) {
+        state = state.copiar(
+          error:
+              'La version nueva para iPhone todavia no esta lista. Abri la '
+              'app con senal en un rato, o avisale al administrador.',
+        );
+      }
+      return;
+    }
     if (_local?.desdePlay ?? false) return _abrirPlay();
     await verificar(avisar: true);
     // Sin red no se intenta con la URL guardada: es prefirmada y lo mas

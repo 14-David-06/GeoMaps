@@ -1,6 +1,9 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
+
+import '../platform/pwa.dart';
 
 /// Que telefono es: `OPPO CPH2637 · Android 14`.
 ///
@@ -12,6 +15,12 @@ import 'package:flutter/services.dart';
 /// Nunca lanza: si el canal no esta -otra plataforma, una prueba- devuelve lo
 /// que Dart sabe por su cuenta.
 Future<String> describirTelefono() async {
+  // En el navegador no hay canal ni `Platform`: lo que se sabe es el navegador,
+  // y ahi va el modelo de iPhone y la version de iOS.
+  if (kIsWeb) {
+    final navegador = Pwa.navegador;
+    return navegador.isEmpty ? 'Web' : 'Web · $navegador';
+  }
   try {
     final nativo = await const MethodChannel('geomaps/telefono')
         .invokeMethod<String>('descripcion');
